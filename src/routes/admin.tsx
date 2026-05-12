@@ -30,6 +30,28 @@ export const Route = createFileRoute("/admin")({
 
 const PW_KEY = "illy_admin_pw";
 const BOUNCE_SECONDS = 10;
+const TZ = "Asia/Dubai"; // Gulf Standard Time (UTC+4)
+const EXCLUDED_SESSION_IDS = new Set<string>([
+  "f67aa4c3-08f5-4dda-81e6-2749fb7d5faa", // synthetic debug session
+]);
+
+const dayFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}); // yields YYYY-MM-DD in GST
+const dateTimeFmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TZ,
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const fmtDay = (iso: string) => dayFmt.format(new Date(iso));
+const fmtDateTime = (iso: string) => dateTimeFmt.format(new Date(iso));
 
 function AdminPage() {
   const [pw, setPw] = useState("");
