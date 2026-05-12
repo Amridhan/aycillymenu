@@ -372,6 +372,7 @@ footer{background:var(--black);color:rgba(255,255,255,.4);text-align:center;heig
       <div id="lb-pricing"></div>
     </div>
   </div>
+</div>
 
 <div class="popup-overlay" id="kiosk-popup">
   <div class="popup-card">
@@ -405,9 +406,9 @@ function oLb(i){
     d.variants.forEach(function(v){h+='<div class="lb-var-row"><span class="lb-var-name">'+v.name+'</span><span class="lb-var-price">'+DH+' '+v.price+'</span></div>';});
     h+='</div>';el.innerHTML=h;
   }else{el.innerHTML='<div class="lb-price">'+DH_LG+' '+d.price+'</div>';}
-  document.getElementById('lb').classList.add('open');
+  var lbEl=document.getElementById('lb');
+  lbEl.classList.add('open');
   document.body.style.overflow='hidden';
-  try{window.parent&&window.parent.scrollTo&&window.parent.scrollTo({top:0,behavior:'instant'});}catch(e){}
 }
 function cLb(){document.getElementById('lb').classList.remove('open');document.body.style.overflow='';}
 function cLbBg(e){if(e.target===document.getElementById('lb'))cLb();}
