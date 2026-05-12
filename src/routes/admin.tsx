@@ -28,7 +28,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-const PW_KEY = "illy_admin_pw";
+
 const BOUNCE_SECONDS = 10;
 const TZ = "Asia/Dubai"; // Gulf Standard Time (UTC+4)
 const EXCLUDED_SESSION_IDS = new Set<string>([
