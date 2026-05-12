@@ -169,7 +169,9 @@ function AdminPage() {
       daySeries,
       topClicks,
     };
-  }, [sessions, events]);
+  }, [allSessions, allEvents]);
+
+  const sessions = allSessions.filter((s) => !EXCLUDED_SESSION_IDS.has(s.id));
 
   if (!authed) {
     return (
