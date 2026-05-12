@@ -81,17 +81,17 @@ html,body{-ms-touch-action:pan-y;touch-action:pan-y;-webkit-overflow-scrolling:t
 .lb-close:active{background:var(--red)}
 footer{background:var(--black);color:rgba(255,255,255,.4);text-align:center;height:48px;display:flex;align-items:center;justify-content:center;font-size:10px;letter-spacing:.1em}
 /* ── WELCOME POPUP ── */
-.popup-overlay{position:fixed;inset:0;z-index:9999;background:#D12420;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 48px;opacity:1;transition:opacity .5s ease}
+.popup-overlay{position:fixed;inset:0;z-index:9999;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 48px;opacity:1;transition:opacity .5s ease}
 .popup-overlay.hiding{opacity:0;pointer-events:none}
 .popup-overlay.hidden{display:none}
 .popup-logo{height:72px;width:72px;border-radius:6px;margin-bottom:28px;flex-shrink:0}
-.popup-headline{font-family:"Open Sans",sans-serif;font-size:22px;font-weight:800;color:#fff;text-align:center;letter-spacing:.02em;margin-bottom:18px;line-height:1.3}
-.popup-body{font-family:"Open Sans",sans-serif;font-size:16px;font-weight:400;color:rgba(255,255,255,.9);text-align:center;line-height:1.7;max-width:520px;margin-bottom:10px}
-.popup-sub{font-family:"Open Sans",sans-serif;font-size:13px;font-weight:400;color:rgba(255,255,255,.6);text-align:center;margin-top:12px;letter-spacing:.04em}
-.popup-close{position:absolute;top:16px;right:18px;width:32px;height:32px;background:rgba(255,255,255,.2);border:none;border-radius:50%;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}
-.popup-close:active{background:rgba(255,255,255,.4)}
-.popup-bar-wrap{position:absolute;bottom:0;left:0;right:0;height:4px;background:rgba(255,255,255,.2)}
-.popup-bar{height:4px;background:#fff;width:100%;transform-origin:left;animation:drainBar 7s linear forwards}
+.popup-headline{font-family:"Open Sans",sans-serif;font-size:22px;font-weight:800;color:#D12420;text-align:center;letter-spacing:.02em;margin-bottom:18px;line-height:1.3}
+.popup-body{font-family:"Open Sans",sans-serif;font-size:16px;font-weight:400;color:#D12420;text-align:center;line-height:1.7;max-width:520px;margin-bottom:10px}
+.popup-sub{font-family:"Open Sans",sans-serif;font-size:13px;font-weight:400;color:rgba(209,36,32,.7);text-align:center;margin-top:12px;letter-spacing:.04em}
+.popup-close{position:absolute;top:16px;right:18px;width:32px;height:32px;background:rgba(209,36,32,.15);border:none;border-radius:50%;color:#D12420;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s}
+.popup-close:active{background:rgba(209,36,32,.3)}
+.popup-bar-wrap{position:absolute;bottom:0;left:0;right:0;height:4px;background:rgba(209,36,32,.2)}
+.popup-bar{height:4px;background:#D12420;width:100%;transform-origin:left;animation:drainBar 7s linear forwards}
 @keyframes drainBar{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 
 /* ── POPUP SPLASH ── */
