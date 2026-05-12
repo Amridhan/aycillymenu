@@ -399,7 +399,7 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 function oLb(i){
   var d=ITEMS[i];
-  document.getElementById('lb-name').textContent=d.name;var lbn=document.getElementById('lb-name');lbn.style.fontSize='24px';lbn.style.color='#000000';lbn.style.webkitFontSmoothing='antialiased';
+  document.getElementById('lb-name').textContent=TC(d.name);var lbn=document.getElementById('lb-name');lbn.style.fontSize='24px';lbn.style.color='#000000';lbn.style.webkitFontSmoothing='antialiased';
   document.getElementById('lb-desc').textContent=d.desc;var lbd=document.getElementById('lb-desc');lbd.style.fontSize='18px';lbd.style.color='#000000';lbd.style.webkitFontSmoothing='antialiased';
   document.getElementById('lb-sub').textContent=d.sub;
   document.getElementById('lb-img').innerHTML=d.img?('<img src="'+d.img+'" alt="'+d.name.replace(/"/g,'&quot;')+'">'):PH;
