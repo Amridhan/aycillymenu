@@ -14,7 +14,83 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      analytics_events: {
+        Row: {
+          created_at: string
+          data: Json | null
+          event_type: string
+          id: number
+          path: string | null
+          session_id: string
+          target_class: string | null
+          target_id: string | null
+          target_tag: string | null
+          target_text: string | null
+        }
+        Insert: {
+          created_at?: string
+          data?: Json | null
+          event_type: string
+          id?: number
+          path?: string | null
+          session_id: string
+          target_class?: string | null
+          target_id?: string | null
+          target_tag?: string | null
+          target_text?: string | null
+        }
+        Update: {
+          created_at?: string
+          data?: Json | null
+          event_type?: string
+          id?: number
+          path?: string | null
+          session_id?: string
+          target_class?: string | null
+          target_id?: string | null
+          target_tag?: string | null
+          target_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analytics_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "analytics_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analytics_sessions: {
+        Row: {
+          id: string
+          language: string | null
+          last_event_at: string
+          referrer: string | null
+          screen: string | null
+          started_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          id?: string
+          language?: string | null
+          last_event_at?: string
+          referrer?: string | null
+          screen?: string | null
+          started_at?: string
+          user_agent?: string | null
+        }
+        Update: {
+          id?: string
+          language?: string | null
+          last_event_at?: string
+          referrer?: string | null
+          screen?: string | null
+          started_at?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
