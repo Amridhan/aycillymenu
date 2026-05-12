@@ -60,6 +60,39 @@ const dateTimeFmt = new Intl.DateTimeFormat("en-GB", {
 const fmtDay = (iso: string) => dayFmt.format(new Date(iso));
 const fmtDateTime = (iso: string) => dateTimeFmt.format(new Date(iso));
 
+const dowFmt = new Intl.DateTimeFormat("en-US", {
+  timeZone: TZ,
+  weekday: "short",
+});
+const dayOfWeek = (yyyymmdd: string) =>
+  dowFmt.format(new Date(`${yyyymmdd}T12:00:00Z`)); // UTC noon = 4pm GST, same date
+
+const hmFmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TZ,
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+const gstMinutesOfDay = (iso: string) => {
+  const [h, m] = hmFmt.format(new Date(iso)).split(":").map(Number);
+  return h * 60 + m;
+};
+
+const fmtMSS = (sec: number) => {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+};
+
+type Band = { label: string; test: (min: number) => boolean };
+const TIME_BANDS: Band[] = [
+  { label: "9:00am – 12:00pm",  test: (m) => m >= 540  && m < 720  },
+  { label: "12:00pm – 3:30pm",  test: (m) => m >= 720  && m < 930  },
+  { label: "3:30pm – 7:30pm",   test: (m) => m >= 930  && m < 1170 },
+  { label: "7:30pm – 10:30pm",  test: (m) => m >= 1170 && m < 1350 },
+  { label: "10:30pm – 12:30am", test: (m) => m >= 1350 || m < 30   },
+];
+
 function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
