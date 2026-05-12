@@ -414,6 +414,7 @@ function oLb(i){
   var lbEl=document.getElementById('lb');
   lbEl.classList.add('open');
   document.body.style.overflow='hidden';
+  try{ if(window.__trackLightbox) window.__trackLightbox(d.name, d.sub, i); }catch(e){}
 }
 function cLb(){document.getElementById('lb').classList.remove('open');document.body.style.overflow='';}
 function cLbBg(e){if(e.target===document.getElementById('lb'))cLb();}
@@ -548,8 +549,16 @@ document.addEventListener('visibilitychange', function() {
   timer = setTimeout(doClose, 7000);
 })();
 
-/* ===== Analytics tracking ===== */
+/* ===== Analytics tracking =====
+   Only the public site (aycillymenu.lovable.app) is tracked.
+   Tracked events:
+     - page_load  (once per session, on initial load)
+     - lightbox_open  (every menu item open, with the item name)
+*/
 (function(){
+  var ALLOWED_HOST = 'aycillymenu.lovable.app';
+  if (location.hostname !== ALLOWED_HOST) return;
+
   var ENDPOINT = 'https://project--5e4e3e03-b49f-4efb-93bd-8198174d85d7.lovable.app/api/public/track';
   var sessionId = null;
   var queue = [];
@@ -579,37 +588,32 @@ document.addEventListener('visibilitychange', function() {
       })
     }).then(function(r){return r.json();}).then(function(j){
       sessionId = j.session_id;
-      // flush any queued clicks
       queue.forEach(function(p){ p.session_id = sessionId; send(p); });
       queue = [];
     }).catch(function(){});
   }
 
-  function track(ev){
-    var t = ev.target;
-    if (!t || t.nodeType !== 1) return;
+  // Exposed for oLb() — fired only when a menu item lightbox opens.
+  window.__trackLightbox = function(name, sub, idx){
     var payload = {
       action:'event',
       session_id: sessionId,
-      event_type:'click',
-      target_tag: (t.tagName||'').toLowerCase(),
-      target_id: t.id || null,
-      target_class: (typeof t.className === 'string' ? t.className : '') || null,
-      target_text: (t.innerText || t.textContent || '').trim().slice(0, 200),
+      event_type:'lightbox_open',
+      target_tag:'menu-item',
+      target_id: String(idx),
+      target_class: sub || null,
+      target_text: name || null,
       path: location.pathname + location.search
     };
     if (!sessionId) { queue.push(payload); return; }
     send(payload);
-  }
+  };
 
-  // Heartbeat to keep last_event_at fresh while user is on page
-  var hb = setInterval(function(){
-    if (sessionId && !document.hidden) {
-      send({action:'heartbeat', session_id: sessionId});
-    }
+  // Heartbeat to keep last_event_at fresh while the user is on the page
+  setInterval(function(){
+    if (sessionId && !document.hidden) send({action:'heartbeat', session_id: sessionId});
   }, 15000);
 
-  // Final beacon on unload so duration is accurate
   window.addEventListener('pagehide', function(){
     if (sessionId) send({action:'heartbeat', session_id: sessionId});
   });
@@ -617,7 +621,6 @@ document.addEventListener('visibilitychange', function() {
     if (document.hidden && sessionId) send({action:'heartbeat', session_id: sessionId});
   });
 
-  document.addEventListener('click', track, true);
   start();
 })();
 </script>
