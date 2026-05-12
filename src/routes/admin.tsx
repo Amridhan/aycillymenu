@@ -259,39 +259,54 @@ function AdminPage() {
         </section>
 
         <section className="grid gap-6 lg:grid-cols-2">
-          <Card title="Page loads by day">
+          <Card title="Per day">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-left text-muted-foreground">
                   <tr>
                     <th className="py-2">Date</th>
-                    <th className="py-2">Loads</th>
+                    <th className="py-2 text-right">Page loads</th>
+                    <th className="py-2 text-right">Sessions</th>
                     <th className="py-2">Bar</th>
                   </tr>
                 </thead>
                 <tbody>
                   {stats.daySeries.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="py-4 text-muted-foreground">
+                      <td colSpan={4} className="py-4 text-muted-foreground">
                         No data yet.
                       </td>
                     </tr>
                   )}
-                  {stats.daySeries.map(([d, n]) => {
+                  {stats.daySeries.map((row) => {
                     const max = Math.max(
-                      ...stats.daySeries.map(([, v]) => v as number)
+                      ...stats.daySeries.map((r) => r.loads)
                     );
-                    const pct = max ? (Number(n) / max) * 100 : 0;
+                    const loadPct = max ? (row.loads / max) * 100 : 0;
+                    const sessPct = max ? (row.sessions / max) * 100 : 0;
                     return (
-                      <tr key={d} className="border-t border-border">
-                        <td className="py-2">{d}</td>
-                        <td className="py-2 tabular-nums">{n}</td>
+                      <tr key={row.day} className="border-t border-border">
+                        <td className="py-2">{row.day}</td>
+                        <td className="py-2 tabular-nums text-right">
+                          {row.loads}
+                        </td>
+                        <td className="py-2 tabular-nums text-right">
+                          {row.sessions}
+                        </td>
                         <td className="py-2 w-1/2">
-                          <div className="h-2 rounded bg-muted">
-                            <div
-                              className="h-2 rounded bg-primary"
-                              style={{ width: `${pct}%` }}
-                            />
+                          <div className="space-y-1">
+                            <div className="h-2 rounded bg-muted">
+                              <div
+                                className="h-2 rounded bg-primary"
+                                style={{ width: `${loadPct}%` }}
+                              />
+                            </div>
+                            <div className="h-2 rounded bg-muted">
+                              <div
+                                className="h-2 rounded bg-accent-foreground/60"
+                                style={{ width: `${sessPct}%` }}
+                              />
+                            </div>
                           </div>
                         </td>
                       </tr>
