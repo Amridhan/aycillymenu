@@ -58,8 +58,8 @@ function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [events, setEvents] = useState<Event[]>([]);
+  const [allSessions, setSessions] = useState<Session[]>([]);
+  const [allEvents, setEvents] = useState<Event[]>([]);
   const [days, setDays] = useState(30);
 
   async function load(password: string, daysBack = days) {
