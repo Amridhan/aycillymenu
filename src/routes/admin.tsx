@@ -61,15 +61,13 @@ const fmtDay = (iso: string) => dayFmt.format(new Date(iso));
 const fmtDateTime = (iso: string) => dateTimeFmt.format(new Date(iso));
 
 function AdminPage() {
-  const [pw, setPw] = useState("");
-  const [authed, setAuthed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [allSessions, setSessions] = useState<Session[]>([]);
   const [allEvents, setEvents] = useState<Event[]>([]);
   const [days, setDays] = useState(30);
 
-  async function load(password: string, daysBack = days) {
+  async function load(daysBack = days) {
     setLoading(true);
     setError(null);
     try {
@@ -77,29 +75,21 @@ function AdminPage() {
       const r = await fetch("/api/admin/stats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, from }),
+        body: JSON.stringify({ from }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Failed");
       setSessions(j.sessions);
       setEvents(j.events);
-      setAuthed(true);
-      sessionStorage.setItem(PW_KEY, password);
     } catch (e) {
       setError((e as Error).message);
-      setAuthed(false);
-      sessionStorage.removeItem(PW_KEY);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    const saved = sessionStorage.getItem(PW_KEY);
-    if (saved) {
-      setPw(saved);
-      load(saved);
-    }
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
