@@ -336,7 +336,7 @@ function AdminPage() {
           <Stat label="Avg clicks / session" value={stats.avgClicksPerSession} sub={`${stats.totalClicks} total`} />
           <Stat
             label="Avg time on page"
-            value={`${stats.avgTime}s`}
+            value={fmtMSS(stats.avgTime)}
           />
           <Stat
             label="Bounce rate"
