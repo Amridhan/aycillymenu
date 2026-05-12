@@ -377,7 +377,7 @@ function AdminPage() {
                   return (
                     <tr key={s.id} className="border-t border-border">
                       <td className="py-2 whitespace-nowrap">
-                        {new Date(s.started_at).toLocaleString()}
+                        {fmtDateTime(s.started_at)}
                       </td>
                       <td className="py-2 tabular-nums">{sec}s</td>
                       <td
