@@ -408,7 +408,7 @@ function oLb(i){
   var DH_LG='<svg width="20" height="17" viewBox="0 0 1000 870" style="display:inline-block;vertical-align:middle;margin-right:3px"><path fill="#D12420" d="'+DH_PATH+'"/></svg>';
   if(d.variants&&d.variants.length){
     var h='<div class="lb-variants">';
-    d.variants.forEach(function(v){h+='<div class="lb-var-row"><span class="lb-var-name">'+v.name+'</span><span class="lb-var-price">'+DH+' '+v.price+'</span></div>';});
+    d.variants.forEach(function(v){h+='<div class="lb-var-row"><span class="lb-var-name">'+TC(v.name)+'</span><span class="lb-var-price">'+DH+' '+v.price+'</span></div>';});
     h+='</div>';el.innerHTML=h;
   }else{el.innerHTML='<div class="lb-price">'+DH_LG+' '+d.price+'</div>';}
   var lbEl=document.getElementById('lb');
