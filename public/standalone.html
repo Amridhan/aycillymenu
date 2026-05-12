@@ -403,6 +403,7 @@ function oLb(i){
     h+='</div>';el.innerHTML=h;
   }else{el.innerHTML='<div class="lb-price">'+DH_LG+' '+d.price+'</div>';}
   document.getElementById('lb').classList.add('open');
+  document.getElementById('lb').scrollIntoView({block:'start'});
   document.body.style.overflow='hidden';
 }
 function cLb(){document.getElementById('lb').classList.remove('open');document.body.style.overflow='';}
