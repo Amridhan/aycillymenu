@@ -437,7 +437,13 @@ function AdminPage() {
     custom: `${customFrom} → ${customTo}`,
   };
   const dayFilterLabel =
-    dayFilter === "weekdays" ? " · weekdays only" : dayFilter === "weekends" ? " · weekends only" : "";
+    dayFilter === "all"
+      ? ""
+      : dayFilter === "weekdays"
+      ? " · weekdays only"
+      : dayFilter === "weekends"
+      ? " · weekends only"
+      : ` · ${WEEKDAY_LABEL[dayFilter]}s only`;
 
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
