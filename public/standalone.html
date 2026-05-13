@@ -593,18 +593,18 @@ document.addEventListener('visibilitychange', function() {
     queue = [];
   }
 
-  function send(payload){
+  function send(payload, preferBeacon){
     try{
       var body = JSON.stringify(payload);
-      // Use text/plain so sendBeacon stays a CORS-safe simple request (no preflight).
-      // The server reads the raw body via request.json() regardless of Content-Type.
       var blob = new Blob([body], {type:'text/plain;charset=UTF-8'});
       var sent = false;
-      if (navigator.sendBeacon) {
+      if (preferBeacon && navigator.sendBeacon) {
         try { sent = navigator.sendBeacon(ENDPOINT, blob); } catch(e) { sent = false; }
       }
       if (!sent) {
-        fetch(ENDPOINT, {method:'POST', headers:{'Content-Type':'text/plain'}, body:body, keepalive:true}).catch(function(){});
+        fetch(ENDPOINT, {method:'POST', headers:{'Content-Type':'application/json'}, body:body, keepalive:true}).catch(function(){
+          if (navigator.sendBeacon) { try { navigator.sendBeacon(ENDPOINT, blob); } catch(e){} }
+        });
       }
     }catch(e){}
   }
@@ -628,12 +628,12 @@ document.addEventListener('visibilitychange', function() {
   }
 
   // Generic event sender — queues until session is ready.
-  function track(payload){
+  function track(payload, preferBeacon){
     payload.action = 'event';
     payload.path = location.pathname + location.search;
     if (!sessionId) { queue.push(payload); return; }
     payload.session_id = sessionId;
-    send(payload);
+    send(payload, preferBeacon);
   }
 
   // Exposed for oLb() — fired only when a menu item lightbox opens.

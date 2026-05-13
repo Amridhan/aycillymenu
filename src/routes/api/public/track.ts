@@ -27,7 +27,8 @@ export const Route = createFileRoute("/api/public/track")({
       OPTIONS: async () => new Response(null, { status: 204, headers: CORS }),
       POST: async ({ request }) => {
         try {
-          const body = (await request.json()) as {
+          const raw = await request.text();
+          const body = JSON.parse(raw || "{}") as {
             action: "start" | "event" | "heartbeat";
             session_id?: string;
             user_agent?: string;
