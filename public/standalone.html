@@ -566,6 +566,14 @@ document.addEventListener('visibilitychange', function() {
      - lightbox_open  (every menu item open, with the item name)
 */
 (function(){
+  // If this menu is embedded inside another tracked page, do not create a
+  // second analytics session for the inner frame.
+  try {
+    if (window.self !== window.top) return;
+  } catch(e) {
+    return;
+  }
+
   // Track on all public hosts (aycillymenu.lovable.app, GitHub Pages, custom domains).
   // Skip only local dev and Lovable preview/sandbox so test traffic isn't logged.
   var h = location.hostname;
