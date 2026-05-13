@@ -382,7 +382,17 @@ function AdminPage() {
       }))
       .sort((a, b) => b.sessions - a.sessions);
 
-    const dwellByItem: Record<string, { name: string; total: number; n: number }> = {};
+    // Combined per-item: views (lightbox_open) + avg dwell (lightbox_close)
+    type ItemAgg = { name: string; sub: string; views: number; dwellTotal: number; dwellN: number };
+    const itemMap: Record<string, ItemAgg> = {};
+    const keyOf = (sub: string, name: string) => `${sub}\u0001${name}`;
+    for (const e of clicks) {
+      const name = (e.target_text || "?").trim().slice(0, 80);
+      const sub = (e.target_class || "").trim().slice(0, 60);
+      const k = keyOf(sub, name);
+      if (!itemMap[k]) itemMap[k] = { name, sub, views: 0, dwellTotal: 0, dwellN: 0 };
+      itemMap[k].views += 1;
+    }
     let dwellTotal = 0;
     let dwellN = 0;
     for (const e of closeEvents) {
@@ -390,16 +400,22 @@ function AdminPage() {
       if (ms <= 0) continue;
       dwellTotal += ms;
       dwellN += 1;
-      const k = (e.target_text || "?").trim().slice(0, 60);
-      if (!dwellByItem[k]) dwellByItem[k] = { name: k, total: 0, n: 0 };
-      dwellByItem[k].total += ms;
-      dwellByItem[k].n += 1;
+      const name = (e.target_text || "?").trim().slice(0, 80);
+      const sub = (e.target_class || "").trim().slice(0, 60);
+      const k = keyOf(sub, name);
+      if (!itemMap[k]) itemMap[k] = { name, sub, views: 0, dwellTotal: 0, dwellN: 0 };
+      itemMap[k].dwellTotal += ms;
+      itemMap[k].dwellN += 1;
     }
     const avgLightboxDwell = dwellN > 0 ? Math.round(dwellTotal / dwellN / 1000) : 0;
-    const topDwell = Object.values(dwellByItem)
-      .map((d) => ({ name: d.name, avgSec: Math.round(d.total / d.n / 1000), opens: d.n }))
-      .sort((a, b) => b.avgSec - a.avgSec)
-      .slice(0, 25);
+    const itemViews = Object.values(itemMap)
+      .map((d) => ({
+        name: d.name,
+        sub: d.sub,
+        views: d.views,
+        avgSec: d.dwellN > 0 ? Math.round(d.dwellTotal / d.dwellN / 1000) : 0,
+      }))
+      .sort((a, b) => b.views - a.views);
 
     return {
       stats: {
