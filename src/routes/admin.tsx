@@ -127,50 +127,15 @@ function AdminPage() {
   }, []);
 
   const { stats, sessions } = useMemo(() => {
-    const allSess = allSessions.filter((s) => !EXCLUDED_SESSION_IDS.has(s.id));
+    const visits = allSessions.filter((s) => !EXCLUDED_SESSION_IDS.has(s.id));
     const events = allEvents.filter((e) => !EXCLUDED_SESSION_IDS.has(e.session_id));
-    const sessionToVisit = new Map<string, string>();
-    const mergeKey = (s: Session) => `${s.screen || ""}|${s.language || ""}|${s.user_agent || ""}`;
-    const visits: Visit[] = [];
-    const lastVisitByKey = new Map<string, Visit>();
-    for (const s of [...allSess].sort(
-      (a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime(),
-    )) {
-      const key = mergeKey(s);
-      const last = lastVisitByKey.get(key);
-      const gap = last
-        ? new Date(s.started_at).getTime() - new Date(last.last_event_at).getTime()
-        : Infinity;
-      if (last && gap >= 0 && gap <= SESSION_MERGE_WINDOW_MS) {
-        last.ids.push(s.id);
-        if (new Date(s.last_event_at).getTime() > new Date(last.last_event_at).getTime()) {
-          last.last_event_at = s.last_event_at;
-        }
-        for (const id of last.ids) sessionToVisit.set(id, last.id);
-      } else {
-        const visit = { ...s, ids: [s.id] };
-        visits.push(visit);
-        sessionToVisit.set(s.id, s.id);
-        lastVisitByKey.set(key, visit);
-      }
-    }
 
-    const pageLoadEvents = events.filter((e) => e.event_type === "page_load");
-    const pageLoadByVisit = new Map<string, Event>();
-    for (const e of [...pageLoadEvents].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    )) {
-      const visitId = sessionToVisit.get(e.session_id) || e.session_id;
-      if (!pageLoadByVisit.has(visitId)) pageLoadByVisit.set(visitId, e);
-    }
-    const pageLoads = Array.from(pageLoadByVisit.values());
+    const pageLoads = events.filter((e) => e.event_type === "page_load");
     // "Click" metric = lightbox_open events (menu item opens)
     const clicks = events.filter((e) => e.event_type === "lightbox_open");
 
     // Sessions that opened at least one lightbox (menu item) — never bounces.
-    const sessionsWithLightbox = new Set(
-      clicks.map((e) => sessionToVisit.get(e.session_id) || e.session_id),
-    );
+    const sessionsWithLightbox = new Set(clicks.map((e) => e.session_id));
 
     // Identify bounced sessions: under threshold AND no lightbox opened.
     // Bounced sessions are NOT counted as sessions anywhere.
