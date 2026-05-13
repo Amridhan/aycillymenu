@@ -115,17 +115,46 @@ function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [allSessions, setSessions] = useState<Session[]>([]);
   const [allEvents, setEvents] = useState<Event[]>([]);
-  const [days, setDays] = useState(30);
 
-  async function load(daysBack = days) {
+  type RangePreset = "24h" | "7d" | "30d" | "90d" | "365d" | "custom";
+  const [preset, setPreset] = useState<RangePreset>("30d");
+  const [customFrom, setCustomFrom] = useState<string>(() => {
+    const d = new Date(Date.now() - 7 * 86400000);
+    return dayFmt.format(d);
+  });
+  const [customTo, setCustomTo] = useState<string>(() => todayGST());
+  const [dayFilter, setDayFilter] = useState<"all" | "weekdays" | "weekends">("all");
+
+  const presetDays: Record<Exclude<RangePreset, "custom">, number> = {
+    "24h": 1,
+    "7d": 7,
+    "30d": 30,
+    "90d": 90,
+    "365d": 365,
+  };
+
+  async function load(opts?: {
+    preset?: RangePreset;
+    from?: string;
+    to?: string;
+  }) {
+    const p = opts?.preset ?? preset;
     setLoading(true);
     setError(null);
     try {
-      const from = new Date(Date.now() - daysBack * 86400000).toISOString();
+      let from: string;
+      let to: string | undefined;
+      if (p === "custom") {
+        from = opts?.from ?? gstDateToISO(customFrom);
+        to = opts?.to ?? gstDateToISO(customTo, true);
+      } else {
+        from = new Date(Date.now() - presetDays[p] * 86400000).toISOString();
+        to = new Date().toISOString();
+      }
       const r = await fetch("/api/admin/stats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ from }),
+        body: JSON.stringify({ from, to }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Failed");
@@ -144,8 +173,17 @@ function AdminPage() {
   }, []);
 
   const { stats, sessions, sessionDuration } = useMemo(() => {
-    const visits = allSessions.filter((s) => !EXCLUDED_SESSION_IDS.has(s.id));
-    const events = allEvents.filter((e) => !EXCLUDED_SESSION_IDS.has(e.session_id));
+    const matchesDayFilter = (iso: string) => {
+      if (dayFilter === "all") return true;
+      const wknd = isWeekendISO(iso);
+      return dayFilter === "weekends" ? wknd : !wknd;
+    };
+    const visits = allSessions.filter(
+      (s) => !EXCLUDED_SESSION_IDS.has(s.id) && matchesDayFilter(s.started_at),
+    );
+    const events = allEvents.filter(
+      (e) => !EXCLUDED_SESSION_IDS.has(e.session_id) && matchesDayFilter(e.created_at),
+    );
 
     const pageLoads = events.filter((e) => e.event_type === "page_load");
     const clicks = events.filter((e) => e.event_type === "lightbox_open"); // "click" = lightbox open
