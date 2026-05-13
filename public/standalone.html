@@ -748,19 +748,19 @@ document.addEventListener('visibilitychange', function() {
 
   // Heartbeat to keep last_event_at fresh while the user is on the page
   setInterval(function(){
-    if (sessionId && !document.hidden) { saveStoredSession(sessionId); send({action:'heartbeat', session_id: sessionId}); }
+    if (sessionId && !document.hidden) { send({action:'heartbeat', session_id: sessionId}); }
   }, 15000);
 
   window.addEventListener('pagehide', function(){
     flushTime();
-    if (sessionId) { saveStoredSession(sessionId); send({action:'heartbeat', session_id: sessionId}); }
+    if (sessionId) { send({action:'heartbeat', session_id: sessionId}); }
   });
   window.addEventListener('beforeunload', flushTime);
   window.addEventListener('visibilitychange', function(){
     if (document.hidden){
       totalVisibleMs += Date.now() - visibleSince;
       flushTime();
-      if (sessionId) { saveStoredSession(sessionId); send({action:'heartbeat', session_id: sessionId}); }
+      if (sessionId) { send({action:'heartbeat', session_id: sessionId}); }
     } else {
       visibleSince = Date.now();
       timeReported = false; // allow another flush if they come back and leave again
