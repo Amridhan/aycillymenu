@@ -134,26 +134,38 @@ function AdminPage() {
     const sessionToVisit = new Map<string, string>();
     const mergeKey = (s: Session) => `${s.screen || ""}|${s.language || ""}|${s.user_agent || ""}`;
     const visits: Visit[] = [];
+    const lastVisitByKey = new Map<string, Visit>();
     for (const s of [...allSess].sort(
       (a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime()
     )) {
-      const last = visits[visits.length - 1];
+      const key = mergeKey(s);
+      const last = lastVisitByKey.get(key);
       const gap = last
         ? new Date(s.started_at).getTime() - new Date(last.last_event_at).getTime()
         : Infinity;
-      if (last && mergeKey(last) === mergeKey(s) && gap >= 0 && gap <= SESSION_MERGE_WINDOW_MS) {
+      if (last && gap >= 0 && gap <= SESSION_MERGE_WINDOW_MS) {
         last.ids.push(s.id);
         if (new Date(s.last_event_at).getTime() > new Date(last.last_event_at).getTime()) {
           last.last_event_at = s.last_event_at;
         }
         for (const id of last.ids) sessionToVisit.set(id, last.id);
       } else {
-        visits.push({ ...s, ids: [s.id] });
+        const visit = { ...s, ids: [s.id] };
+        visits.push(visit);
         sessionToVisit.set(s.id, s.id);
+        lastVisitByKey.set(key, visit);
       }
     }
 
-    const pageLoads = events.filter((e) => e.event_type === "page_load");
+    const pageLoadEvents = events.filter((e) => e.event_type === "page_load");
+    const pageLoadByVisit = new Map<string, Event>();
+    for (const e of [...pageLoadEvents].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )) {
+      const visitId = sessionToVisit.get(e.session_id) || e.session_id;
+      if (!pageLoadByVisit.has(visitId)) pageLoadByVisit.set(visitId, e);
+    }
+    const pageLoads = Array.from(pageLoadByVisit.values());
     // "Click" metric = lightbox_open events (menu item opens)
     const clicks = events.filter((e) => e.event_type === "lightbox_open");
 
