@@ -131,20 +131,39 @@ function AdminPage() {
   const { stats, sessions } = useMemo(() => {
     const allSess = allSessions.filter((s) => !EXCLUDED_SESSION_IDS.has(s.id));
     const events = allEvents.filter((e) => !EXCLUDED_SESSION_IDS.has(e.session_id));
+    const sessionToVisit = new Map<string, string>();
+    const mergeKey = (s: Session) => `${s.screen || ""}|${s.language || ""}|${s.user_agent || ""}`;
+    const visits: Visit[] = [];
+    for (const s of [...allSess].sort(
+      (a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime()
+    )) {
+      const last = visits[visits.length - 1];
+      const gap = last
+        ? new Date(s.started_at).getTime() - new Date(last.last_event_at).getTime()
+        : Infinity;
+      if (last && mergeKey(last) === mergeKey(s) && gap >= 0 && gap <= SESSION_MERGE_WINDOW_MS) {
+        last.ids.push(s.id);
+        if (new Date(s.last_event_at).getTime() > new Date(last.last_event_at).getTime()) {
+          last.last_event_at = s.last_event_at;
+        }
+        for (const id of last.ids) sessionToVisit.set(id, last.id);
+      } else {
+        visits.push({ ...s, ids: [s.id] });
+        sessionToVisit.set(s.id, s.id);
+      }
+    }
 
     const pageLoads = events.filter((e) => e.event_type === "page_load");
     // "Click" metric = lightbox_open events (menu item opens)
     const clicks = events.filter((e) => e.event_type === "lightbox_open");
 
     // Sessions that opened at least one lightbox (menu item) — never bounces.
-    const sessionsWithLightbox = new Set(
-      clicks.map((e) => e.session_id)
-    );
+    const sessionsWithLightbox = new Set(clicks.map((e) => sessionToVisit.get(e.session_id) || e.session_id));
 
     // Identify bounced sessions: under threshold AND no lightbox opened.
     // Bounced sessions are NOT counted as sessions anywhere.
     const bouncedIds = new Set<string>();
-    for (const s of allSess) {
+    for (const s of visits) {
       const sec = Math.max(
         0,
         Math.round(
@@ -158,7 +177,7 @@ function AdminPage() {
       }
     }
     const bounces = bouncedIds.size;
-    const sessions = allSess.filter((s) => !bouncedIds.has(s.id));
+    const sessions = visits.filter((s) => !bouncedIds.has(s.id));
 
     // duration per (non-bounced) session
     const durations = sessions.map((s) => {
