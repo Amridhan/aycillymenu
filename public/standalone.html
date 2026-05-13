@@ -801,15 +801,27 @@ document.addEventListener('visibilitychange', function() {
     setTimeout(checkScroll, 500);
   });
 
-  // ---- time_on_page: accumulate visible time, send on hide / unload ----
-  var visibleSince = Date.now();
-  var totalVisibleMs = 0;
+  // ---- time_on_page: active engagement only ----
+  // Counts time the tab is visible AND the user has interacted within
+  // IDLE_MS. This avoids inflating the metric when someone leaves the tab
+  // open but walks away from the device.
+  var IDLE_MS = 30000;          // pause after 30s of no interaction
+  var TICK_MS = 1000;
+  var totalActiveMs = 0;
+  var lastActivity = Date.now();
   var timeReported = false;
+  ['mousemove','mousedown','keydown','scroll','touchstart','click','wheel'].forEach(function(ev){
+    window.addEventListener(ev, function(){ lastActivity = Date.now(); }, {passive:true, capture:true});
+  });
+  setInterval(function(){
+    if (document.hidden) return;
+    if (Date.now() - lastActivity > IDLE_MS) return;
+    totalActiveMs += TICK_MS;
+  }, TICK_MS);
   function flushTime(){
     if (timeReported) return;
-    if (!document.hidden) totalVisibleMs += Date.now() - visibleSince;
     timeReported = true;
-    track({ event_type:'time_on_page', data: { ms: Math.round(totalVisibleMs) } });
+    track({ event_type:'time_on_page', data: { ms: Math.round(totalActiveMs) } });
   }
 
   // Heartbeat to keep last_event_at fresh while the user is on the page
@@ -824,12 +836,11 @@ document.addEventListener('visibilitychange', function() {
   window.addEventListener('beforeunload', flushTime);
   window.addEventListener('visibilitychange', function(){
     if (document.hidden){
-      totalVisibleMs += Date.now() - visibleSince;
       flushTime();
       if (sessionId) { send({action:'heartbeat', session_id: sessionId}); }
     } else {
-      visibleSince = Date.now();
-      timeReported = false; // allow another flush if they come back and leave again
+      lastActivity = Date.now();
+      timeReported = false; // allow another flush if they leave again
     }
   });
 
