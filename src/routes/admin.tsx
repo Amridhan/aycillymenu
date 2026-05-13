@@ -126,15 +126,16 @@ function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { stats, sessions } = useMemo(() => {
+  const { stats, sessions, sessionDuration } = useMemo(() => {
     const visits = allSessions.filter((s) => !EXCLUDED_SESSION_IDS.has(s.id));
     const events = allEvents.filter((e) => !EXCLUDED_SESSION_IDS.has(e.session_id));
 
-    const allPageLoads = events.filter((e) => e.event_type === "page_load");
-    // "Click" metric = lightbox_open events (menu item opens)
-    const allClicks = events.filter((e) => e.event_type === "lightbox_open");
-
+    const pageLoads = events.filter((e) => e.event_type === "page_load");
+    const clicks = events.filter((e) => e.event_type === "lightbox_open"); // "click" = lightbox open
     const timeEvents = events.filter((e) => e.event_type === "time_on_page");
+
+    // Best recorded visible-time per session (ms). Sessions without a
+    // time_on_page event have no entry here.
     const timePerSession: Record<string, number> = {};
     for (const e of timeEvents) {
       const ms = (e.data as { ms?: number } | null)?.ms ?? 0;
@@ -142,49 +143,62 @@ function AdminPage() {
         timePerSession[e.session_id] = ms;
       }
     }
-    const completedSessionIds = new Set(Object.keys(timePerSession));
-    const completedEvents = events.filter((e) => completedSessionIds.has(e.session_id));
-    const completedVisits = visits.filter((s) => completedSessionIds.has(s.id));
-    const pageLoads = allPageLoads.filter((e) => completedSessionIds.has(e.session_id));
-    const clicks = allClicks.filter((e) => completedSessionIds.has(e.session_id));
 
-    // Sessions that opened at least one lightbox (menu item) — never bounces.
+    // Effective duration per session (sec). Prefers time_on_page; falls back
+    // to last_event_at − started_at when no time event was recorded.
+    const sessionDuration: Record<string, number> = {};
+    for (const s of visits) {
+      const fromTime = timePerSession[s.id];
+      if (fromTime != null) {
+        sessionDuration[s.id] = Math.max(0, Math.round(fromTime / 1000));
+      } else {
+        sessionDuration[s.id] = Math.max(
+          0,
+          Math.round(
+            (new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime()) / 1000,
+          ),
+        );
+      }
+    }
+
+    // Sessions that opened at least one lightbox — never bounces.
     const sessionsWithLightbox = new Set(clicks.map((e) => e.session_id));
 
-    // Identify bounced sessions: under threshold AND no lightbox opened.
-    // Bounced sessions are NOT counted as sessions anywhere.
+    // Bounce: shorter than threshold AND no lightbox opened.
     const bouncedIds = new Set<string>();
-    for (const s of completedVisits) {
-      const sec = Math.round((timePerSession[s.id] ?? 0) / 1000);
+    for (const s of visits) {
+      const sec = sessionDuration[s.id] ?? 0;
       if (sec < BOUNCE_SECONDS && !sessionsWithLightbox.has(s.id)) {
         bouncedIds.add(s.id);
       }
     }
     const bounces = bouncedIds.size;
-    const sessions = completedVisits.filter((s) => !bouncedIds.has(s.id));
 
-    // duration per (non-bounced) session
-    const durations = sessions.map((s) => {
-      return Math.max(0, Math.round((timePerSession[s.id] ?? 0) / 1000));
-    });
-    const avgTime =
-      durations.length > 0
-        ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+    // "Sessions" metric = every session that did NOT bounce.
+    const sessions = visits.filter((s) => !bouncedIds.has(s.id));
+
+    // Avg time on page = average of time_on_page across sessions that
+    // recorded one (any session, bounced or not).
+    const timeValues = Object.values(timePerSession);
+    const avgTimeOnPage =
+      timeValues.length > 0
+        ? Math.round(timeValues.reduce((a, b) => a + b, 0) / timeValues.length / 1000)
         : 0;
-    const bounceRate = completedVisits.length > 0 ? Math.round((bounces / completedVisits.length) * 1000) / 10 : 0;
 
-    // Helper: build metrics for a bucket given its sessions + bounced count + page loads.
+    const bounceRate = visits.length > 0 ? Math.round((bounces / visits.length) * 1000) / 10 : 0;
+
+    // Per-bucket helper.
     const buildBucket = (loads: number, sessList: Session[], bouncedCount: number) => {
-      const durs = sessList.map((s) => Math.max(0, Math.round((timePerSession[s.id] ?? 0) / 1000)));
-      const avg = durs.length > 0 ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : 0;
+      const durs = sessList
+        .map((s) => timePerSession[s.id])
+        .filter((v): v is number => v != null);
+      const avg =
+        durs.length > 0
+          ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length / 1000)
+          : null;
       const totalSess = sessList.length + bouncedCount;
       const br = totalSess > 0 ? Math.round((bouncedCount / totalSess) * 1000) / 10 : null;
-      return {
-        loads,
-        sessions: sessList.length,
-        avgTime: sessList.length > 0 ? avg : null,
-        bounceRate: br,
-      };
+      return { loads, sessions: sessList.length, avgTime: avg, bounceRate: br };
     };
 
     // ----- Per day -----
@@ -244,14 +258,12 @@ function AdminPage() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 25);
 
-    // ---- New event types ----
-    const nonExcluded = (e: Event) => !EXCLUDED_SESSION_IDS.has(e.session_id);
-    const scrollEvents = events.filter((e) => e.event_type === "scroll_depth" && nonExcluded(e));
-    const hoverEvents = events.filter((e) => e.event_type === "hover" && nonExcluded(e));
-    const sectionEvents = events.filter((e) => e.event_type === "section_view" && nonExcluded(e));
-    const closeEvents = events.filter((e) => e.event_type === "lightbox_close" && nonExcluded(e));
+    // ---- Other event types ----
+    const scrollEvents = events.filter((e) => e.event_type === "scroll_depth");
+    const hoverEvents = events.filter((e) => e.event_type === "hover");
+    const sectionEvents = events.filter((e) => e.event_type === "section_view");
+    const closeEvents = events.filter((e) => e.event_type === "lightbox_close");
 
-    // Scroll depth: % of sessions that reached each threshold
     const scrollByThreshold: Record<string, Set<string>> = {
       "25": new Set(),
       "50": new Set(),
@@ -260,8 +272,7 @@ function AdminPage() {
     };
     for (const e of scrollEvents) {
       const t = e.target_id || "";
-      if (scrollByThreshold[t])
-        scrollByThreshold[t].add(e.session_id);
+      if (scrollByThreshold[t]) scrollByThreshold[t].add(e.session_id);
     }
     const scrollDepth = ["25", "50", "75", "100"].map((t) => ({
       threshold: t,
@@ -272,7 +283,6 @@ function AdminPage() {
           : 0,
     }));
 
-    // Top hovered items (dwell ≥500ms, deduped per session)
     const hoverCounts: Record<string, number> = {};
     for (const e of hoverEvents) {
       const k = (e.target_text || "?").trim().slice(0, 60);
@@ -282,7 +292,6 @@ function AdminPage() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 25);
 
-    // Section views — sessions per section
     const sectionByKey: Record<string, { title: string; sessions: Set<string> }> = {};
     for (const e of sectionEvents) {
       const id = e.target_id || "?";
@@ -298,13 +307,6 @@ function AdminPage() {
       }))
       .sort((a, b) => b.sessions - a.sessions);
 
-    const timeValues = Object.values(timePerSession);
-    const realAvgTime =
-      timeValues.length > 0
-        ? Math.round(timeValues.reduce((a, b) => a + b, 0) / timeValues.length / 1000)
-        : 0;
-
-    // Avg lightbox dwell (per item + overall)
     const dwellByItem: Record<string, { name: string; total: number; n: number }> = {};
     let dwellTotal = 0;
     let dwellN = 0;
@@ -331,8 +333,7 @@ function AdminPage() {
         totalClicks: clicks.length,
         avgClicksPerSession:
           sessions.length > 0 ? Math.round((clicks.length / sessions.length) * 10) / 10 : 0,
-        avgTime,
-        realAvgTime,
+        avgTimeOnPage,
         avgLightboxDwell,
         bounceRate,
         bounces,
@@ -345,6 +346,7 @@ function AdminPage() {
         topDwell,
       },
       sessions,
+      sessionDuration,
     };
   }, [allSessions, allEvents]);
 
@@ -399,8 +401,8 @@ function AdminPage() {
           />
           <Stat
             label="Avg time on page"
-            value={fmtMSS(stats.realAvgTime)}
-            sub={stats.realAvgTime ? "from time_on_page" : "no data yet"}
+            value={fmtMSS(stats.avgTimeOnPage)}
+            sub={stats.avgTimeOnPage ? "from time_on_page" : "no data yet"}
           />
           <Stat
             label="Bounce rate"
@@ -411,11 +413,6 @@ function AdminPage() {
             label="Avg lightbox dwell"
             value={fmtMSS(stats.avgLightboxDwell)}
             sub="time inside popups"
-          />
-          <Stat
-            label="Avg time (last event − first)"
-            value={fmtMSS(stats.avgTime)}
-            sub="legacy heuristic"
           />
         </section>
 
@@ -650,13 +647,7 @@ function AdminPage() {
               </thead>
               <tbody>
                 {sessions.slice(0, 100).map((s) => {
-                  const sec = Math.max(
-                    0,
-                    Math.round(
-                      (new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime()) /
-                        1000,
-                    ),
-                  );
+                  const sec = sessionDuration[s.id] ?? 0;
                   return (
                     <tr key={s.id} className="border-t border-border">
                       <td className="py-2 whitespace-nowrap">{fmtDateTime(s.started_at)}</td>
