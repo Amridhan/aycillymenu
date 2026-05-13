@@ -319,22 +319,7 @@ function AdminPage() {
       return { label: b.label, ...buildBucket(loads, sessList, bouncedCount) };
     });
 
-    // top click targets
-    const targetKey = (e: Event) => {
-      const txt = (e.target_text || "").trim().slice(0, 60);
-      const id = e.target_id ? `#${e.target_id}` : "";
-      const cls = e.target_class ? "." + e.target_class.split(/\s+/).slice(0, 2).join(".") : "";
-      const tag = e.target_tag || "?";
-      return `${tag}${id}${cls}${txt ? ` — "${txt}"` : ""}`;
-    };
-    const clickCounts: Record<string, number> = {};
-    for (const c of clicks) {
-      const k = targetKey(c);
-      clickCounts[k] = (clickCounts[k] || 0) + 1;
-    }
-    const topClicks = Object.entries(clickCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 25);
+    // (legacy generic click breakdown removed — replaced by itemViews below)
 
     // ---- Other event types ----
     const scrollEvents = events.filter((e) => e.event_type === "scroll_depth");
