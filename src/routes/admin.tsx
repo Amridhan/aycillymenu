@@ -640,7 +640,7 @@ function AdminPage() {
           </div>
         </Card>
 
-        <Card title="Scroll depth (sessions reaching threshold)">
+        <Card title="Scroll depth (sessions by highest threshold reached)">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-muted-foreground">
