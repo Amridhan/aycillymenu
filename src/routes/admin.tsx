@@ -647,13 +647,7 @@ function AdminPage() {
               </thead>
               <tbody>
                 {sessions.slice(0, 100).map((s) => {
-                  const sec = Math.max(
-                    0,
-                    Math.round(
-                      (new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime()) /
-                        1000,
-                    ),
-                  );
+                  const sec = sessionDuration[s.id] ?? 0;
                   return (
                     <tr key={s.id} className="border-t border-border">
                       <td className="py-2 whitespace-nowrap">{fmtDateTime(s.started_at)}</td>
