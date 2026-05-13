@@ -130,9 +130,23 @@ function AdminPage() {
     const visits = allSessions.filter((s) => !EXCLUDED_SESSION_IDS.has(s.id));
     const events = allEvents.filter((e) => !EXCLUDED_SESSION_IDS.has(e.session_id));
 
-    const pageLoads = events.filter((e) => e.event_type === "page_load");
+    const allPageLoads = events.filter((e) => e.event_type === "page_load");
     // "Click" metric = lightbox_open events (menu item opens)
-    const clicks = events.filter((e) => e.event_type === "lightbox_open");
+    const allClicks = events.filter((e) => e.event_type === "lightbox_open");
+
+    const timeEvents = events.filter((e) => e.event_type === "time_on_page");
+    const timePerSession: Record<string, number> = {};
+    for (const e of timeEvents) {
+      const ms = (e.data as { ms?: number } | null)?.ms ?? 0;
+      if (!timePerSession[e.session_id] || ms > timePerSession[e.session_id]) {
+        timePerSession[e.session_id] = ms;
+      }
+    }
+    const completedSessionIds = new Set(Object.keys(timePerSession));
+    const completedEvents = events.filter((e) => completedSessionIds.has(e.session_id));
+    const completedVisits = visits.filter((s) => completedSessionIds.has(s.id));
+    const pageLoads = allPageLoads.filter((e) => completedSessionIds.has(e.session_id));
+    const clicks = allClicks.filter((e) => completedSessionIds.has(e.session_id));
 
     // Sessions that opened at least one lightbox (menu item) — never bounces.
     const sessionsWithLightbox = new Set(clicks.map((e) => e.session_id));
@@ -140,39 +154,28 @@ function AdminPage() {
     // Identify bounced sessions: under threshold AND no lightbox opened.
     // Bounced sessions are NOT counted as sessions anywhere.
     const bouncedIds = new Set<string>();
-    for (const s of visits) {
-      const sec = Math.max(
-        0,
-        Math.round((new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime()) / 1000),
-      );
+    for (const s of completedVisits) {
+      const sec = Math.round((timePerSession[s.id] ?? 0) / 1000);
       if (sec < BOUNCE_SECONDS && !sessionsWithLightbox.has(s.id)) {
         bouncedIds.add(s.id);
       }
     }
     const bounces = bouncedIds.size;
-    const sessions = visits.filter((s) => !bouncedIds.has(s.id));
+    const sessions = completedVisits.filter((s) => !bouncedIds.has(s.id));
 
     // duration per (non-bounced) session
     const durations = sessions.map((s) => {
-      const ms = new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime();
-      return Math.max(0, Math.round(ms / 1000));
+      return Math.max(0, Math.round((timePerSession[s.id] ?? 0) / 1000));
     });
     const avgTime =
       durations.length > 0
         ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
         : 0;
-    const bounceRate = visits.length > 0 ? Math.round((bounces / visits.length) * 1000) / 10 : 0;
+    const bounceRate = completedVisits.length > 0 ? Math.round((bounces / completedVisits.length) * 1000) / 10 : 0;
 
     // Helper: build metrics for a bucket given its sessions + bounced count + page loads.
     const buildBucket = (loads: number, sessList: Session[], bouncedCount: number) => {
-      const durs = sessList.map((s) =>
-        Math.max(
-          0,
-          Math.round(
-            (new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime()) / 1000,
-          ),
-        ),
-      );
+      const durs = sessList.map((s) => Math.max(0, Math.round((timePerSession[s.id] ?? 0) / 1000)));
       const avg = durs.length > 0 ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : 0;
       const totalSess = sessList.length + bouncedCount;
       const br = totalSess > 0 ? Math.round((bouncedCount / totalSess) * 1000) / 10 : null;
@@ -246,7 +249,6 @@ function AdminPage() {
     const scrollEvents = events.filter((e) => e.event_type === "scroll_depth" && nonExcluded(e));
     const hoverEvents = events.filter((e) => e.event_type === "hover" && nonExcluded(e));
     const sectionEvents = events.filter((e) => e.event_type === "section_view" && nonExcluded(e));
-    const timeEvents = events.filter((e) => e.event_type === "time_on_page" && nonExcluded(e));
     const closeEvents = events.filter((e) => e.event_type === "lightbox_close" && nonExcluded(e));
 
     // Scroll depth: % of sessions that reached each threshold
@@ -296,15 +298,6 @@ function AdminPage() {
       }))
       .sort((a, b) => b.sessions - a.sessions);
 
-    // Real time on page (from time_on_page events). Use the largest reading per session.
-    const timePerSession: Record<string, number> = {};
-    for (const e of timeEvents) {
-      const ms = (e.data as { ms?: number } | null)?.ms ?? 0;
-      const visitId = e.session_id;
-      if (!timePerSession[visitId] || ms > timePerSession[visitId]) {
-        timePerSession[visitId] = ms;
-      }
-    }
     const timeValues = Object.values(timePerSession);
     const realAvgTime =
       timeValues.length > 0
