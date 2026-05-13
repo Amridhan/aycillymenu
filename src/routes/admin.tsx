@@ -28,8 +28,8 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-
 const BOUNCE_SECONDS = 10;
+const SESSION_MERGE_WINDOW_MS = 30 * 60 * 1000;
 const TZ = "Asia/Dubai"; // Gulf Standard Time (UTC+4)
 const EXCLUDED_SESSION_IDS = new Set<string>([
   "f67aa4c3-08f5-4dda-81e6-2749fb7d5faa", // synthetic debug session
@@ -64,8 +64,7 @@ const dowFmt = new Intl.DateTimeFormat("en-US", {
   timeZone: TZ,
   weekday: "short",
 });
-const dayOfWeek = (yyyymmdd: string) =>
-  dowFmt.format(new Date(`${yyyymmdd}T12:00:00Z`)); // UTC noon = 4pm GST, same date
+const dayOfWeek = (yyyymmdd: string) => dowFmt.format(new Date(`${yyyymmdd}T12:00:00Z`)); // UTC noon = 4pm GST, same date
 
 const hmFmt = new Intl.DateTimeFormat("en-GB", {
   timeZone: TZ,
@@ -85,12 +84,13 @@ const fmtMSS = (sec: number) => {
 };
 
 type Band = { label: string; test: (min: number) => boolean };
+type Visit = Session & { ids: string[] };
 const TIME_BANDS: Band[] = [
-  { label: "9:00am – 12:00pm",  test: (m) => m >= 540  && m < 720  },
-  { label: "12:00pm – 3:30pm",  test: (m) => m >= 720  && m < 930  },
-  { label: "3:30pm – 7:30pm",   test: (m) => m >= 930  && m < 1170 },
-  { label: "7:30pm – 10:30pm",  test: (m) => m >= 1170 && m < 1350 },
-  { label: "10:30pm – 12:30am", test: (m) => m >= 1350 || m < 30   },
+  { label: "9:00am – 12:00pm", test: (m) => m >= 540 && m < 720 },
+  { label: "12:00pm – 3:30pm", test: (m) => m >= 720 && m < 930 },
+  { label: "3:30pm – 7:30pm", test: (m) => m >= 930 && m < 1170 },
+  { label: "7:30pm – 10:30pm", test: (m) => m >= 1170 && m < 1350 },
+  { label: "10:30pm – 12:30am", test: (m) => m >= 1350 || m < 30 },
 ];
 
 function AdminPage() {
@@ -129,75 +129,88 @@ function AdminPage() {
   const { stats, sessions } = useMemo(() => {
     const allSess = allSessions.filter((s) => !EXCLUDED_SESSION_IDS.has(s.id));
     const events = allEvents.filter((e) => !EXCLUDED_SESSION_IDS.has(e.session_id));
+    const sessionToVisit = new Map<string, string>();
+    const mergeKey = (s: Session) => `${s.screen || ""}|${s.language || ""}|${s.user_agent || ""}`;
+    const visits: Visit[] = [];
+    const lastVisitByKey = new Map<string, Visit>();
+    for (const s of [...allSess].sort(
+      (a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime(),
+    )) {
+      const key = mergeKey(s);
+      const last = lastVisitByKey.get(key);
+      const gap = last
+        ? new Date(s.started_at).getTime() - new Date(last.last_event_at).getTime()
+        : Infinity;
+      if (last && gap >= 0 && gap <= SESSION_MERGE_WINDOW_MS) {
+        last.ids.push(s.id);
+        if (new Date(s.last_event_at).getTime() > new Date(last.last_event_at).getTime()) {
+          last.last_event_at = s.last_event_at;
+        }
+        for (const id of last.ids) sessionToVisit.set(id, last.id);
+      } else {
+        const visit = { ...s, ids: [s.id] };
+        visits.push(visit);
+        sessionToVisit.set(s.id, s.id);
+        lastVisitByKey.set(key, visit);
+      }
+    }
 
-    const pageLoads = events.filter((e) => e.event_type === "page_load");
+    const pageLoadEvents = events.filter((e) => e.event_type === "page_load");
+    const pageLoadByVisit = new Map<string, Event>();
+    for (const e of [...pageLoadEvents].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    )) {
+      const visitId = sessionToVisit.get(e.session_id) || e.session_id;
+      if (!pageLoadByVisit.has(visitId)) pageLoadByVisit.set(visitId, e);
+    }
+    const pageLoads = Array.from(pageLoadByVisit.values());
     // "Click" metric = lightbox_open events (menu item opens)
     const clicks = events.filter((e) => e.event_type === "lightbox_open");
 
     // Sessions that opened at least one lightbox (menu item) — never bounces.
     const sessionsWithLightbox = new Set(
-      clicks.map((e) => e.session_id)
+      clicks.map((e) => sessionToVisit.get(e.session_id) || e.session_id),
     );
 
     // Identify bounced sessions: under threshold AND no lightbox opened.
     // Bounced sessions are NOT counted as sessions anywhere.
     const bouncedIds = new Set<string>();
-    for (const s of allSess) {
+    for (const s of visits) {
       const sec = Math.max(
         0,
-        Math.round(
-          (new Date(s.last_event_at).getTime() -
-            new Date(s.started_at).getTime()) /
-            1000
-        )
+        Math.round((new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime()) / 1000),
       );
       if (sec < BOUNCE_SECONDS && !sessionsWithLightbox.has(s.id)) {
         bouncedIds.add(s.id);
       }
     }
     const bounces = bouncedIds.size;
-    const sessions = allSess.filter((s) => !bouncedIds.has(s.id));
+    const sessions = visits.filter((s) => !bouncedIds.has(s.id));
 
     // duration per (non-bounced) session
     const durations = sessions.map((s) => {
-      const ms =
-        new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime();
+      const ms = new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime();
       return Math.max(0, Math.round(ms / 1000));
     });
     const avgTime =
       durations.length > 0
         ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
         : 0;
-    const bounceRate =
-      allSess.length > 0
-        ? Math.round((bounces / allSess.length) * 1000) / 10
-        : 0;
+    const bounceRate = visits.length > 0 ? Math.round((bounces / visits.length) * 1000) / 10 : 0;
 
     // Helper: build metrics for a bucket given its sessions + bounced count + page loads.
-    const buildBucket = (
-      loads: number,
-      sessList: Session[],
-      bouncedCount: number
-    ) => {
+    const buildBucket = (loads: number, sessList: Session[], bouncedCount: number) => {
       const durs = sessList.map((s) =>
         Math.max(
           0,
           Math.round(
-            (new Date(s.last_event_at).getTime() -
-              new Date(s.started_at).getTime()) /
-              1000
-          )
-        )
+            (new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime()) / 1000,
+          ),
+        ),
       );
-      const avg =
-        durs.length > 0
-          ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length)
-          : 0;
+      const avg = durs.length > 0 ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length) : 0;
       const totalSess = sessList.length + bouncedCount;
-      const br =
-        totalSess > 0
-          ? Math.round((bouncedCount / totalSess) * 1000) / 10
-          : null;
+      const br = totalSess > 0 ? Math.round((bouncedCount / totalSess) * 1000) / 10 : null;
       return {
         loads,
         sessions: sessList.length,
@@ -218,7 +231,7 @@ function AdminPage() {
       (sessByDay[d] ||= []).push(s);
     }
     const bouncedByDay: Record<string, number> = {};
-    for (const s of allSess) {
+    for (const s of visits) {
       if (!bouncedIds.has(s.id)) continue;
       const d = fmtDay(s.started_at);
       bouncedByDay[d] = (bouncedByDay[d] || 0) + 1;
@@ -238,14 +251,10 @@ function AdminPage() {
 
     // ----- Per time band -----
     const bandSeries = TIME_BANDS.map((b) => {
-      const loads = pageLoads.filter((p) =>
-        b.test(gstMinutesOfDay(p.created_at))
-      ).length;
-      const sessList = sessions.filter((s) =>
-        b.test(gstMinutesOfDay(s.started_at))
-      );
-      const bouncedCount = allSess.filter(
-        (s) => bouncedIds.has(s.id) && b.test(gstMinutesOfDay(s.started_at))
+      const loads = pageLoads.filter((p) => b.test(gstMinutesOfDay(p.created_at))).length;
+      const sessList = sessions.filter((s) => b.test(gstMinutesOfDay(s.started_at)));
+      const bouncedCount = visits.filter(
+        (s) => bouncedIds.has(s.id) && b.test(gstMinutesOfDay(s.started_at)),
       ).length;
       return { label: b.label, ...buildBucket(loads, sessList, bouncedCount) };
     });
@@ -254,9 +263,7 @@ function AdminPage() {
     const targetKey = (e: Event) => {
       const txt = (e.target_text || "").trim().slice(0, 60);
       const id = e.target_id ? `#${e.target_id}` : "";
-      const cls = e.target_class
-        ? "." + e.target_class.split(/\s+/).slice(0, 2).join(".")
-        : "";
+      const cls = e.target_class ? "." + e.target_class.split(/\s+/).slice(0, 2).join(".") : "";
       const tag = e.target_tag || "?";
       return `${tag}${id}${cls}${txt ? ` — "${txt}"` : ""}`;
     };
@@ -278,17 +285,24 @@ function AdminPage() {
     const closeEvents = events.filter((e) => e.event_type === "lightbox_close" && nonExcluded(e));
 
     // Scroll depth: % of sessions that reached each threshold
-    const scrollByThreshold: Record<string, Set<string>> = { "25": new Set(), "50": new Set(), "75": new Set(), "100": new Set() };
+    const scrollByThreshold: Record<string, Set<string>> = {
+      "25": new Set(),
+      "50": new Set(),
+      "75": new Set(),
+      "100": new Set(),
+    };
     for (const e of scrollEvents) {
       const t = e.target_id || "";
-      if (scrollByThreshold[t]) scrollByThreshold[t].add(e.session_id);
+      if (scrollByThreshold[t])
+        scrollByThreshold[t].add(sessionToVisit.get(e.session_id) || e.session_id);
     }
     const scrollDepth = ["25", "50", "75", "100"].map((t) => ({
       threshold: t,
       sessions: scrollByThreshold[t].size,
-      pct: sessions.length > 0
-        ? Math.round((scrollByThreshold[t].size / sessions.length) * 1000) / 10
-        : 0,
+      pct:
+        sessions.length > 0
+          ? Math.round((scrollByThreshold[t].size / sessions.length) * 1000) / 10
+          : 0,
     }));
 
     // Top hovered items (dwell ≥500ms, deduped per session)
@@ -306,16 +320,14 @@ function AdminPage() {
     for (const e of sectionEvents) {
       const id = e.target_id || "?";
       if (!sectionByKey[id]) sectionByKey[id] = { title: e.target_text || id, sessions: new Set() };
-      sectionByKey[id].sessions.add(e.session_id);
+      sectionByKey[id].sessions.add(sessionToVisit.get(e.session_id) || e.session_id);
     }
     const sectionSeries = Object.entries(sectionByKey)
       .map(([id, v]) => ({
         id,
         title: v.title,
         sessions: v.sessions.size,
-        pct: sessions.length > 0
-          ? Math.round((v.sessions.size / sessions.length) * 1000) / 10
-          : 0,
+        pct: sessions.length > 0 ? Math.round((v.sessions.size / sessions.length) * 1000) / 10 : 0,
       }))
       .sort((a, b) => b.sessions - a.sessions);
 
@@ -323,14 +335,16 @@ function AdminPage() {
     const timePerSession: Record<string, number> = {};
     for (const e of timeEvents) {
       const ms = (e.data as { ms?: number } | null)?.ms ?? 0;
-      if (!timePerSession[e.session_id] || ms > timePerSession[e.session_id]) {
-        timePerSession[e.session_id] = ms;
+      const visitId = sessionToVisit.get(e.session_id) || e.session_id;
+      if (!timePerSession[visitId] || ms > timePerSession[visitId]) {
+        timePerSession[visitId] = ms;
       }
     }
     const timeValues = Object.values(timePerSession);
-    const realAvgTime = timeValues.length > 0
-      ? Math.round(timeValues.reduce((a, b) => a + b, 0) / timeValues.length / 1000)
-      : 0;
+    const realAvgTime =
+      timeValues.length > 0
+        ? Math.round(timeValues.reduce((a, b) => a + b, 0) / timeValues.length / 1000)
+        : 0;
 
     // Avg lightbox dwell (per item + overall)
     const dwellByItem: Record<string, { name: string; total: number; n: number }> = {};
@@ -358,9 +372,7 @@ function AdminPage() {
         totalSessions: sessions.length,
         totalClicks: clicks.length,
         avgClicksPerSession:
-          sessions.length > 0
-            ? Math.round((clicks.length / sessions.length) * 10) / 10
-            : 0,
+          sessions.length > 0 ? Math.round((clicks.length / sessions.length) * 10) / 10 : 0,
         avgTime,
         realAvgTime,
         avgLightboxDwell,
@@ -422,7 +434,11 @@ function AdminPage() {
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Stat label="Page loads" value={stats.totalPageLoads} />
           <Stat label="Sessions" value={stats.totalSessions} />
-          <Stat label="Avg clicks / session" value={stats.avgClicksPerSession} sub={`${stats.totalClicks} total`} />
+          <Stat
+            label="Avg clicks / session"
+            value={stats.avgClicksPerSession}
+            sub={`${stats.totalClicks} total`}
+          />
           <Stat
             label="Avg time on page"
             value={fmtMSS(stats.realAvgTime)}
@@ -480,7 +496,11 @@ function AdminPage() {
               </thead>
               <tbody>
                 {stats.sectionSeries.length === 0 && (
-                  <tr><td colSpan={3} className="py-4 text-muted-foreground">No section views yet.</td></tr>
+                  <tr>
+                    <td colSpan={3} className="py-4 text-muted-foreground">
+                      No section views yet.
+                    </td>
+                  </tr>
                 )}
                 {stats.sectionSeries.map((r) => (
                   <tr key={r.id} className="border-t border-border">
@@ -505,11 +525,17 @@ function AdminPage() {
               </thead>
               <tbody>
                 {stats.topHovers.length === 0 && (
-                  <tr><td colSpan={2} className="py-4 text-muted-foreground">No hovers yet (touch devices have no hover).</td></tr>
+                  <tr>
+                    <td colSpan={2} className="py-4 text-muted-foreground">
+                      No hovers yet (touch devices have no hover).
+                    </td>
+                  </tr>
                 )}
                 {stats.topHovers.map(([k, n]) => (
                   <tr key={k} className="border-t border-border">
-                    <td className="py-2 truncate max-w-[420px]" title={k}>{k}</td>
+                    <td className="py-2 truncate max-w-[420px]" title={k}>
+                      {k}
+                    </td>
                     <td className="py-2 text-right tabular-nums">{n}</td>
                   </tr>
                 ))}
@@ -530,11 +556,17 @@ function AdminPage() {
               </thead>
               <tbody>
                 {stats.topDwell.length === 0 && (
-                  <tr><td colSpan={3} className="py-4 text-muted-foreground">No lightbox closes yet.</td></tr>
+                  <tr>
+                    <td colSpan={3} className="py-4 text-muted-foreground">
+                      No lightbox closes yet.
+                    </td>
+                  </tr>
                 )}
                 {stats.topDwell.map((r) => (
                   <tr key={r.name} className="border-t border-border">
-                    <td className="py-2 truncate max-w-[420px]" title={r.name}>{r.name}</td>
+                    <td className="py-2 truncate max-w-[420px]" title={r.name}>
+                      {r.name}
+                    </td>
                     <td className="py-2 text-right tabular-nums">{fmtMSS(r.avgSec)}</td>
                     <td className="py-2 text-right tabular-nums">{r.opens}</td>
                   </tr>
@@ -654,7 +686,7 @@ function AdminPage() {
                   <th className="py-2">Duration</th>
                   <th className="py-2">Referrer</th>
                   <th className="py-2">Screen</th>
-                  
+
                   <th className="py-2">User agent</th>
                 </tr>
               </thead>
@@ -663,29 +695,20 @@ function AdminPage() {
                   const sec = Math.max(
                     0,
                     Math.round(
-                      (new Date(s.last_event_at).getTime() -
-                        new Date(s.started_at).getTime()) /
-                        1000
-                    )
+                      (new Date(s.last_event_at).getTime() - new Date(s.started_at).getTime()) /
+                        1000,
+                    ),
                   );
                   return (
                     <tr key={s.id} className="border-t border-border">
-                      <td className="py-2 whitespace-nowrap">
-                        {fmtDateTime(s.started_at)}
-                      </td>
+                      <td className="py-2 whitespace-nowrap">{fmtDateTime(s.started_at)}</td>
                       <td className="py-2 tabular-nums">{sec}s</td>
-                      <td
-                        className="py-2 truncate max-w-[200px]"
-                        title={s.referrer || ""}
-                      >
+                      <td className="py-2 truncate max-w-[200px]" title={s.referrer || ""}>
                         {s.referrer || "—"}
                       </td>
                       <td className="py-2">{s.screen || "—"}</td>
-                      
-                      <td
-                        className="py-2 truncate max-w-[300px]"
-                        title={s.user_agent || ""}
-                      >
+
+                      <td className="py-2 truncate max-w-[300px]" title={s.user_agent || ""}>
                         {s.user_agent || "—"}
                       </td>
                     </tr>
@@ -700,33 +723,17 @@ function AdminPage() {
   );
 }
 
-function Stat({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-}) {
+function Stat({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
       {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
     </div>
   );
 }
 
-function Card({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <h2 className="mb-3 text-sm font-semibold text-foreground">{title}</h2>
