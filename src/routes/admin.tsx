@@ -319,22 +319,7 @@ function AdminPage() {
       return { label: b.label, ...buildBucket(loads, sessList, bouncedCount) };
     });
 
-    // top click targets
-    const targetKey = (e: Event) => {
-      const txt = (e.target_text || "").trim().slice(0, 60);
-      const id = e.target_id ? `#${e.target_id}` : "";
-      const cls = e.target_class ? "." + e.target_class.split(/\s+/).slice(0, 2).join(".") : "";
-      const tag = e.target_tag || "?";
-      return `${tag}${id}${cls}${txt ? ` — "${txt}"` : ""}`;
-    };
-    const clickCounts: Record<string, number> = {};
-    for (const c of clicks) {
-      const k = targetKey(c);
-      clickCounts[k] = (clickCounts[k] || 0) + 1;
-    }
-    const topClicks = Object.entries(clickCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 25);
+    // (legacy generic click breakdown removed — replaced by itemViews below)
 
     // ---- Other event types ----
     const scrollEvents = events.filter((e) => e.event_type === "scroll_depth");
@@ -397,7 +382,17 @@ function AdminPage() {
       }))
       .sort((a, b) => b.sessions - a.sessions);
 
-    const dwellByItem: Record<string, { name: string; total: number; n: number }> = {};
+    // Combined per-item: views (lightbox_open) + avg dwell (lightbox_close)
+    type ItemAgg = { name: string; sub: string; views: number; dwellTotal: number; dwellN: number };
+    const itemMap: Record<string, ItemAgg> = {};
+    const keyOf = (sub: string, name: string) => `${sub}\u0001${name}`;
+    for (const e of clicks) {
+      const name = (e.target_text || "?").trim().slice(0, 80);
+      const sub = (e.target_class || "").trim().slice(0, 60);
+      const k = keyOf(sub, name);
+      if (!itemMap[k]) itemMap[k] = { name, sub, views: 0, dwellTotal: 0, dwellN: 0 };
+      itemMap[k].views += 1;
+    }
     let dwellTotal = 0;
     let dwellN = 0;
     for (const e of closeEvents) {
@@ -405,16 +400,22 @@ function AdminPage() {
       if (ms <= 0) continue;
       dwellTotal += ms;
       dwellN += 1;
-      const k = (e.target_text || "?").trim().slice(0, 60);
-      if (!dwellByItem[k]) dwellByItem[k] = { name: k, total: 0, n: 0 };
-      dwellByItem[k].total += ms;
-      dwellByItem[k].n += 1;
+      const name = (e.target_text || "?").trim().slice(0, 80);
+      const sub = (e.target_class || "").trim().slice(0, 60);
+      const k = keyOf(sub, name);
+      if (!itemMap[k]) itemMap[k] = { name, sub, views: 0, dwellTotal: 0, dwellN: 0 };
+      itemMap[k].dwellTotal += ms;
+      itemMap[k].dwellN += 1;
     }
     const avgLightboxDwell = dwellN > 0 ? Math.round(dwellTotal / dwellN / 1000) : 0;
-    const topDwell = Object.values(dwellByItem)
-      .map((d) => ({ name: d.name, avgSec: Math.round(d.total / d.n / 1000), opens: d.n }))
-      .sort((a, b) => b.avgSec - a.avgSec)
-      .slice(0, 25);
+    const itemViews = Object.values(itemMap)
+      .map((d) => ({
+        name: d.name,
+        sub: d.sub,
+        views: d.views,
+        avgSec: d.dwellN > 0 ? Math.round(d.dwellTotal / d.dwellN / 1000) : 0,
+      }))
+      .sort((a, b) => b.views - a.views);
 
     return {
       stats: {
@@ -429,11 +430,10 @@ function AdminPage() {
         bounces,
         daySeries,
         bandSeries,
-        topClicks,
+        itemViews,
         scrollDepth,
         topHovers,
         sectionSeries,
-        topDwell,
       },
       sessions,
       sessionDuration,
@@ -695,61 +695,37 @@ function AdminPage() {
           </div>
         </Card>
 
-        <Card title="Top clicked items">
+        <Card title="Menu item views and average dwell">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-muted-foreground">
                 <tr>
-                  <th className="py-2">Element</th>
-                  <th className="py-2 text-right">Clicks</th>
+                  <th className="py-2">Sub Category</th>
+                  <th className="py-2">Item Name</th>
+                  <th className="py-2 text-right">Number of views</th>
+                  <th className="py-2 text-right">Average dwell</th>
                 </tr>
               </thead>
               <tbody>
-                {stats.topClicks.length === 0 && (
+                {stats.itemViews.length === 0 && (
                   <tr>
-                    <td colSpan={2} className="py-4 text-muted-foreground">
-                      No clicks yet.
+                    <td colSpan={4} className="py-4 text-muted-foreground">
+                      No menu item views yet.
                     </td>
                   </tr>
                 )}
-                {stats.topClicks.map(([k, n]) => (
-                  <tr key={k} className="border-t border-border">
-                    <td className="py-2 truncate max-w-[420px]" title={k}>
-                      {k}
+                {stats.itemViews.map((r) => (
+                  <tr key={`${r.sub}\u0001${r.name}`} className="border-t border-border">
+                    <td className="py-2 truncate max-w-[200px]" title={r.sub}>
+                      {r.sub || "—"}
                     </td>
-                    <td className="py-2 text-right tabular-nums">{n}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card title="Lightbox dwell — top items by avg time inside popup">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-muted-foreground">
-                <tr>
-                  <th className="py-2">Item</th>
-                  <th className="py-2 text-right">Avg dwell</th>
-                  <th className="py-2 text-right">Opens</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.topDwell.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="py-4 text-muted-foreground">
-                      No lightbox closes yet.
-                    </td>
-                  </tr>
-                )}
-                {stats.topDwell.map((r) => (
-                  <tr key={r.name} className="border-t border-border">
-                    <td className="py-2 truncate max-w-[420px]" title={r.name}>
+                    <td className="py-2 truncate max-w-[320px]" title={r.name}>
                       {r.name}
                     </td>
-                    <td className="py-2 text-right tabular-nums">{fmtMSS(r.avgSec)}</td>
-                    <td className="py-2 text-right tabular-nums">{r.opens}</td>
+                    <td className="py-2 text-right tabular-nums">{r.views}</td>
+                    <td className="py-2 text-right tabular-nums">
+                      {r.avgSec > 0 ? fmtMSS(r.avgSec) : "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
