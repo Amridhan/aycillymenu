@@ -508,6 +508,15 @@ function AdminPage() {
               <option value="all">All days</option>
               <option value="weekdays">Weekdays (Mon–Fri)</option>
               <option value="weekends">Weekends (Sat–Sun)</option>
+              <optgroup label="Single weekday">
+                <option value="Mon">Mondays</option>
+                <option value="Tue">Tuesdays</option>
+                <option value="Wed">Wednesdays</option>
+                <option value="Thu">Thursdays</option>
+                <option value="Fri">Fridays</option>
+                <option value="Sat">Saturdays</option>
+                <option value="Sun">Sundays</option>
+              </optgroup>
             </select>
 
             <button
