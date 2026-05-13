@@ -77,6 +77,23 @@ const gstMinutesOfDay = (iso: string) => {
   return h * 60 + m;
 };
 
+const isWeekendISO = (iso: string) => {
+  const d = dowFmt.format(new Date(iso));
+  return d === "Sat" || d === "Sun";
+};
+
+// Local date string -> ISO at start/end of GST day. We treat the date input as GST.
+// GST is UTC+4, so "YYYY-MM-DD 00:00 GST" = "YYYY-MM-DDT00:00:00-04:00" in ISO form
+// using the offset ... but simpler: build a UTC time and shift by -4h.
+const gstDateToISO = (yyyymmdd: string, endOfDay = false) => {
+  const [y, m, d] = yyyymmdd.split("-").map(Number);
+  const utcMs = Date.UTC(y, m - 1, d, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0);
+  // GST is UTC+4, so 00:00 GST = previous day 20:00 UTC
+  return new Date(utcMs - 4 * 3600 * 1000).toISOString();
+};
+
+const todayGST = () => dayFmt.format(new Date());
+
 const fmtMSS = (sec: number) => {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
@@ -98,17 +115,46 @@ function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [allSessions, setSessions] = useState<Session[]>([]);
   const [allEvents, setEvents] = useState<Event[]>([]);
-  const [days, setDays] = useState(30);
 
-  async function load(daysBack = days) {
+  type RangePreset = "24h" | "7d" | "30d" | "90d" | "365d" | "custom";
+  const [preset, setPreset] = useState<RangePreset>("30d");
+  const [customFrom, setCustomFrom] = useState<string>(() => {
+    const d = new Date(Date.now() - 7 * 86400000);
+    return dayFmt.format(d);
+  });
+  const [customTo, setCustomTo] = useState<string>(() => todayGST());
+  const [dayFilter, setDayFilter] = useState<"all" | "weekdays" | "weekends">("all");
+
+  const presetDays: Record<Exclude<RangePreset, "custom">, number> = {
+    "24h": 1,
+    "7d": 7,
+    "30d": 30,
+    "90d": 90,
+    "365d": 365,
+  };
+
+  async function load(opts?: {
+    preset?: RangePreset;
+    from?: string;
+    to?: string;
+  }) {
+    const p = opts?.preset ?? preset;
     setLoading(true);
     setError(null);
     try {
-      const from = new Date(Date.now() - daysBack * 86400000).toISOString();
+      let from: string;
+      let to: string | undefined;
+      if (p === "custom") {
+        from = opts?.from ?? gstDateToISO(customFrom);
+        to = opts?.to ?? gstDateToISO(customTo, true);
+      } else {
+        from = new Date(Date.now() - presetDays[p] * 86400000).toISOString();
+        to = new Date().toISOString();
+      }
       const r = await fetch("/api/admin/stats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ from }),
+        body: JSON.stringify({ from, to }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Failed");
@@ -127,8 +173,17 @@ function AdminPage() {
   }, []);
 
   const { stats, sessions, sessionDuration } = useMemo(() => {
-    const visits = allSessions.filter((s) => !EXCLUDED_SESSION_IDS.has(s.id));
-    const events = allEvents.filter((e) => !EXCLUDED_SESSION_IDS.has(e.session_id));
+    const matchesDayFilter = (iso: string) => {
+      if (dayFilter === "all") return true;
+      const wknd = isWeekendISO(iso);
+      return dayFilter === "weekends" ? wknd : !wknd;
+    };
+    const visits = allSessions.filter(
+      (s) => !EXCLUDED_SESSION_IDS.has(s.id) && matchesDayFilter(s.started_at),
+    );
+    const events = allEvents.filter(
+      (e) => !EXCLUDED_SESSION_IDS.has(e.session_id) && matchesDayFilter(e.created_at),
+    );
 
     const pageLoads = events.filter((e) => e.event_type === "page_load");
     const clicks = events.filter((e) => e.event_type === "lightbox_open"); // "click" = lightbox open
@@ -348,7 +403,18 @@ function AdminPage() {
       sessions,
       sessionDuration,
     };
-  }, [allSessions, allEvents]);
+  }, [allSessions, allEvents, dayFilter]);
+
+  const presetLabel: Record<RangePreset, string> = {
+    "24h": "Last 24h",
+    "7d": "Last 7 days",
+    "30d": "Last 30 days",
+    "90d": "Last 90 days",
+    "365d": "Last year",
+    custom: `${customFrom} → ${customTo}`,
+  };
+  const dayFilterLabel =
+    dayFilter === "weekdays" ? " · weekdays only" : dayFilter === "weekends" ? " · weekends only" : "";
 
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
@@ -357,25 +423,64 @@ function AdminPage() {
           <div>
             <h1 className="text-2xl font-semibold">Menu Analytics</h1>
             <p className="text-sm text-muted-foreground">
-              Last {days} days · bounce = session shorter than {BOUNCE_SECONDS}s
+              {presetLabel[preset]}{dayFilterLabel} · bounce = session shorter than {BOUNCE_SECONDS}s
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <select
-              value={days}
+              value={preset}
               onChange={(e) => {
-                const d = Number(e.target.value);
-                setDays(d);
-                load(d);
+                const p = e.target.value as RangePreset;
+                setPreset(p);
+                if (p !== "custom") load({ preset: p });
               }}
               className="rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
-              <option value={1}>Last 24h</option>
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
-              <option value={365}>Last year</option>
+              <option value="24h">Last 24h</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="90d">Last 90 days</option>
+              <option value="365d">Last year</option>
+              <option value="custom">Custom range…</option>
             </select>
+
+            {preset === "custom" && (
+              <>
+                <input
+                  type="date"
+                  value={customFrom}
+                  max={customTo}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="rounded-md border border-input bg-background px-2 py-2 text-sm"
+                />
+                <span className="text-muted-foreground text-sm">→</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  min={customFrom}
+                  max={todayGST()}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="rounded-md border border-input bg-background px-2 py-2 text-sm"
+                />
+                <button
+                  onClick={() => load({ preset: "custom" })}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent"
+                >
+                  Apply
+                </button>
+              </>
+            )}
+
+            <select
+              value={dayFilter}
+              onChange={(e) => setDayFilter(e.target.value as typeof dayFilter)}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="all">All days</option>
+              <option value="weekdays">Weekdays (Mon–Fri)</option>
+              <option value="weekends">Weekends (Sat–Sun)</option>
+            </select>
+
             <button
               onClick={() => load()}
               className="rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent"
