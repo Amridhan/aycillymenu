@@ -414,9 +414,19 @@ function oLb(i){
   var lbEl=document.getElementById('lb');
   lbEl.classList.add('open');
   document.body.style.overflow='hidden';
+  window.__lbCurrent = {name:d.name, sub:d.sub, idx:i, openedAt:Date.now()};
   try{ if(window.__trackLightbox) window.__trackLightbox(d.name, d.sub, i); }catch(e){}
 }
-function cLb(){document.getElementById('lb').classList.remove('open');document.body.style.overflow='';}
+function cLb(){
+  try{
+    if(window.__lbCurrent && window.__trackLightboxClose){
+      var c = window.__lbCurrent;
+      window.__trackLightboxClose(c.name, c.sub, c.idx, Date.now() - c.openedAt);
+    }
+  }catch(e){}
+  window.__lbCurrent = null;
+  document.getElementById('lb').classList.remove('open');document.body.style.overflow='';
+}
 function cLbBg(e){if(e.target===document.getElementById('lb'))cLb();}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')cLb();});
 // ── sTo: instant scroll to element with fixed nav offset ──
