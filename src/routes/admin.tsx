@@ -190,6 +190,7 @@ function AdminPage() {
       if (!r.ok) throw new Error(j.error || "Failed");
       setSessions(j.sessions);
       setEvents(j.events);
+      setDevices(j.devices ?? []);
     } catch (e) {
       setError((e as Error).message);
     } finally {
