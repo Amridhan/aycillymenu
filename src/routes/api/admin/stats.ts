@@ -24,6 +24,7 @@ type AnalyticsSession = {
   referrer: string | null;
   screen: string | null;
   language: string | null;
+  device_id: string | null;
 };
 
 type AnalyticsEvent = {
@@ -57,10 +58,10 @@ export const Route = createFileRoute("/api/admin/stats")({
             new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
           const to = body.to || new Date().toISOString();
 
-          const [sessionsRes, eventsRes] = await Promise.all([
+          const [sessionsRes, eventsRes, devicesRes] = await Promise.all([
             sb
               .from("analytics_sessions")
-              .select("id, started_at, last_event_at, user_agent, referrer, screen, language")
+              .select("id, started_at, last_event_at, user_agent, referrer, screen, language, device_id")
               .gte("started_at", from)
               .lte("started_at", to)
               .order("started_at", { ascending: false })
@@ -72,10 +73,15 @@ export const Route = createFileRoute("/api/admin/stats")({
               .lte("created_at", to)
               .order("created_at", { ascending: false })
               .limit(10000),
+            sb
+              .from("devices")
+              .select("device_id, label, serial, location, first_seen_at, last_seen_at")
+              .order("last_seen_at", { ascending: false }),
           ]);
 
           if (sessionsRes.error) return json({ error: sessionsRes.error.message }, 500);
           if (eventsRes.error) return json({ error: eventsRes.error.message }, 500);
+          if (devicesRes.error) return json({ error: devicesRes.error.message }, 500);
 
           const rawSessions = (sessionsRes.data ?? []) as AnalyticsSession[];
           const rawEvents = (eventsRes.data ?? []) as AnalyticsEvent[];
