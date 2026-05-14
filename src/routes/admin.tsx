@@ -808,3 +808,121 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
     </div>
   );
 }
+
+function DevicesCard({ devices, onRefresh }: { devices: Device[]; onRefresh: () => void }) {
+  const [edits, setEdits] = useState<Record<string, { label: string; serial: string; location: string }>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const getRow = (d: Device) =>
+    edits[d.device_id] ?? {
+      label: d.label ?? "",
+      serial: d.serial ?? "",
+      location: d.location ?? "",
+    };
+
+  const setField = (id: string, field: "label" | "serial" | "location", value: string) => {
+    setEdits((prev) => ({ ...prev, [id]: { ...getRow({ device_id: id, label: null, serial: null, location: null, first_seen_at: "", last_seen_at: "" }), ...prev[id], [field]: value } }));
+  };
+
+  const save = async (d: Device) => {
+    const row = getRow(d);
+    setSavingId(d.device_id);
+    try {
+      const r = await fetch("/api/admin/device", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_id: d.device_id, ...row }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "Save failed");
+      setEdits((prev) => {
+        const copy = { ...prev };
+        delete copy[d.device_id];
+        return copy;
+      });
+      onRefresh();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <Card title={`Devices (${devices.length})`}>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Each tablet generates a persistent device ID on first visit. Label them once (e.g. "Store 1 — Counter")
+        and add the Hexnode serial. Sessions will then show the friendly name.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-muted-foreground">
+            <tr>
+              <th className="py-2">Device ID</th>
+              <th className="py-2">Label</th>
+              <th className="py-2">Serial</th>
+              <th className="py-2">Location</th>
+              <th className="py-2">Last seen</th>
+              <th className="py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {devices.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-4 text-muted-foreground">
+                  No devices recorded yet.
+                </td>
+              </tr>
+            )}
+            {devices.map((d) => {
+              const row = getRow(d);
+              const dirty = edits[d.device_id] != null;
+              return (
+                <tr key={d.device_id} className="border-t border-border">
+                  <td className="py-2 font-mono text-xs" title={d.device_id}>
+                    {d.device_id.slice(0, 8)}…
+                  </td>
+                  <td className="py-2">
+                    <input
+                      value={row.label}
+                      onChange={(e) => setField(d.device_id, "label", e.target.value)}
+                      placeholder="e.g. Store 1 — Counter"
+                      className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                    />
+                  </td>
+                  <td className="py-2">
+                    <input
+                      value={row.serial}
+                      onChange={(e) => setField(d.device_id, "serial", e.target.value)}
+                      placeholder="Hexnode serial"
+                      className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                    />
+                  </td>
+                  <td className="py-2">
+                    <input
+                      value={row.location}
+                      onChange={(e) => setField(d.device_id, "location", e.target.value)}
+                      placeholder="Location"
+                      className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                    />
+                  </td>
+                  <td className="py-2 whitespace-nowrap text-muted-foreground text-xs">
+                    {fmtDateTime(d.last_seen_at)}
+                  </td>
+                  <td className="py-2 text-right">
+                    <button
+                      onClick={() => save(d)}
+                      disabled={!dirty || savingId === d.device_id}
+                      className="rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent disabled:opacity-40"
+                    >
+                      {savingId === d.device_id ? "…" : "Save"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
