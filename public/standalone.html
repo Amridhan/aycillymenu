@@ -602,14 +602,6 @@ document.addEventListener('visibilitychange', function() {
      - lightbox_open  (every menu item open, with the item name)
 */
 (function(){
-  // If this menu is embedded inside another tracked page, do not create a
-  // second analytics session for the inner frame.
-  try {
-    if (window.self !== window.top) return;
-  } catch(e) {
-    return;
-  }
-
   // Track on all public hosts (aycillymenu.lovable.app, GitHub Pages, custom domains).
   // Skip only local dev and Lovable preview/sandbox so test traffic isn't logged.
   var h = location.hostname;
@@ -630,15 +622,31 @@ document.addEventListener('visibilitychange', function() {
   // Persistent per-tablet ID. Stored in localStorage so it survives reloads,
   // session timeouts, and kiosk auto-restarts. Only cleared by a full
   // browser-data wipe (factory reset or MDM cache clear).
+  function getCookieDeviceId(){
+    var m = document.cookie.match(/(?:^|; )aycilly_analytics_device=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  function setCookieDeviceId(id){
+    document.cookie = 'aycilly_analytics_device=' + encodeURIComponent(id) + '; Max-Age=31536000; Path=/; SameSite=Lax; Secure';
+  }
   try {
-    deviceId = localStorage.getItem(DEVICE_KEY);
+    deviceId = localStorage.getItem(DEVICE_KEY) || getCookieDeviceId();
     if (!deviceId) {
       deviceId = (crypto && crypto.randomUUID)
         ? crypto.randomUUID()
         : 'd-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
-      localStorage.setItem(DEVICE_KEY, deviceId);
     }
-  } catch(e) {}
+    localStorage.setItem(DEVICE_KEY, deviceId);
+    setCookieDeviceId(deviceId);
+  } catch(e) {
+    deviceId = getCookieDeviceId();
+    if (!deviceId) {
+      deviceId = (crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 'd-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+      setCookieDeviceId(deviceId);
+    }
+  }
 
   try {
     var stored = sessionStorage.getItem(SESSION_KEY);
