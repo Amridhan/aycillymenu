@@ -646,7 +646,7 @@ document.addEventListener('visibilitychange', function() {
         : 'd-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
       setCookieDeviceId(deviceId);
     }
-  } catch(e) {}
+  }
 
   try {
     var stored = sessionStorage.getItem(SESSION_KEY);
