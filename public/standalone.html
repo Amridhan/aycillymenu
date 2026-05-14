@@ -622,8 +622,23 @@ document.addEventListener('visibilitychange', function() {
 
   var ENDPOINT = 'https://project--5e4e3e03-b49f-4efb-93bd-8198174d85d7.lovable.app/api/public/track';
   var SESSION_KEY = 'aycilly.analytics.session.v1';
+  var DEVICE_KEY = 'aycilly.analytics.device.v1';
   var sessionId = null;
+  var deviceId = null;
   var queue = [];
+
+  // Persistent per-tablet ID. Stored in localStorage so it survives reloads,
+  // session timeouts, and kiosk auto-restarts. Only cleared by a full
+  // browser-data wipe (factory reset or MDM cache clear).
+  try {
+    deviceId = localStorage.getItem(DEVICE_KEY);
+    if (!deviceId) {
+      deviceId = (crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 'd-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem(DEVICE_KEY, deviceId);
+    }
+  } catch(e) {}
 
   try {
     var stored = sessionStorage.getItem(SESSION_KEY);
@@ -669,6 +684,7 @@ document.addEventListener('visibilitychange', function() {
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         action:'start',
+        device_id: deviceId,
         user_agent: navigator.userAgent,
         referrer: document.referrer || null,
         screen: window.screen.width + 'x' + window.screen.height,
