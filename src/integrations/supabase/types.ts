@@ -63,6 +63,7 @@ export type Database = {
       }
       analytics_sessions: {
         Row: {
+          device_id: string | null
           id: string
           language: string | null
           last_event_at: string
@@ -72,6 +73,7 @@ export type Database = {
           user_agent: string | null
         }
         Insert: {
+          device_id?: string | null
           id?: string
           language?: string | null
           last_event_at?: string
@@ -81,6 +83,7 @@ export type Database = {
           user_agent?: string | null
         }
         Update: {
+          device_id?: string | null
           id?: string
           language?: string | null
           last_event_at?: string
@@ -88,6 +91,33 @@ export type Database = {
           screen?: string | null
           started_at?: string
           user_agent?: string | null
+        }
+        Relationships: []
+      }
+      devices: {
+        Row: {
+          device_id: string
+          first_seen_at: string
+          label: string | null
+          last_seen_at: string
+          location: string | null
+          serial: string | null
+        }
+        Insert: {
+          device_id: string
+          first_seen_at?: string
+          label?: string | null
+          last_seen_at?: string
+          location?: string | null
+          serial?: string | null
+        }
+        Update: {
+          device_id?: string
+          first_seen_at?: string
+          label?: string | null
+          last_seen_at?: string
+          location?: string | null
+          serial?: string | null
         }
         Relationships: []
       }
