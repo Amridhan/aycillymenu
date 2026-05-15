@@ -61,15 +61,13 @@ export const Route = createFileRoute("/api/public/track")({
           const sb = admin();
 
           if (body.action === "start") {
-            const session_id = body.session_id?.slice(0, 100) ?? null;
+            const session_id = body.session_id?.slice(0, 100) ?? crypto.randomUUID();
             const user_agent = body.user_agent?.slice(0, 500) ?? null;
             const referrer = body.referrer?.slice(0, 500) ?? null;
             const screen = body.screen?.slice(0, 50) ?? null;
             const language = body.language?.slice(0, 20) ?? null;
             const path = body.path?.slice(0, 500) ?? null;
             const device_id = body.device_id?.slice(0, 100) ?? null;
-            if (!session_id) return json({ error: "session_id required" }, 400);
-
             // Upsert device row (track first/last seen).
             if (device_id) {
               await sb
