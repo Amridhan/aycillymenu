@@ -9829,7 +9829,6 @@
         var sessionEndReported = false;
         var sessionSeq = 0;
         var realActivitySeen = false;
-        var activeStartedAt = 0;
 
         // Persistent per-tablet ID. Stored in localStorage so it survives reloads,
         // session timeouts, and kiosk auto-restarts. Only cleared by a full
@@ -9921,7 +9920,11 @@
               return r.json();
             })
             .then(function (j) {
-              if (seq !== sessionSeq || document.hidden) {
+              if (seq !== sessionSeq) return;
+              if (document.hidden) {
+                sessionId = j.session_id;
+                reportSessionEnd();
+                closeCurrentSession();
                 startRequested = false;
                 sessionStartedAt = 0;
                 return;
@@ -10096,7 +10099,6 @@
         function noteRealActivity() {
           if (!realActivitySeen) {
             realActivitySeen = true;
-            activeStartedAt = Date.now();
           }
           lastActivity = Date.now();
         }
@@ -10129,11 +10131,10 @@
 
         function reportSessionEnd() {
           if (!sessionId || sessionEndReported || !sessionStartedAt) return;
-          if (!realActivitySeen) return;
           sessionEndReported = true;
           track({
             event_type: "session_end",
-            data: { ms: Math.max(0, Date.now() - (activeStartedAt || sessionStartedAt)) },
+            data: { ms: Math.max(0, Date.now() - sessionStartedAt) },
           });
         }
 
