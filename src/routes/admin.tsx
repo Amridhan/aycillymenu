@@ -109,6 +109,16 @@ const fmtMSS = (sec: number) => {
   return `${m}:${s.toString().padStart(2, "0")}`;
 };
 
+const sessionFingerprint = (s: Pick<Session, "user_agent" | "screen">) => {
+  const ua = (s.user_agent || "")
+    .toLowerCase()
+    .replace(/(chrome|version|safari|applewebkit)\/[\d.]+/g, "$1")
+    .replace(/build\/[\w.]+/g, "build")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${s.screen || ""}|${ua}`;
+};
+
 type Band = { label: string; test: (min: number) => boolean };
 
 const TIME_BANDS: Band[] = [
@@ -163,11 +173,7 @@ function AdminPage() {
     "365d": 365,
   };
 
-  async function load(opts?: {
-    preset?: RangePreset;
-    from?: string;
-    to?: string;
-  }) {
+  async function load(opts?: { preset?: RangePreset; from?: string; to?: string }) {
     const p = opts?.preset ?? preset;
     setLoading(true);
     setError(null);
@@ -212,11 +218,22 @@ function AdminPage() {
       }
       return dowFmt.format(new Date(iso)) === dayFilter;
     };
-    const visits = allSessions.filter(
+    const rawVisits = allSessions.filter(
       (s) => !EXCLUDED_SESSION_IDS.has(s.id) && matchesDayFilter(s.started_at),
     );
+    const dedupedVisits = new Map<string, Session>();
+    for (const s of rawVisits) {
+      const minuteBucket = Math.floor(new Date(s.started_at).getTime() / 60_000);
+      const key = `${minuteBucket}|${sessionFingerprint(s)}`;
+      const existing = dedupedVisits.get(key);
+      if (!existing || new Date(s.started_at).getTime() < new Date(existing.started_at).getTime()) {
+        dedupedVisits.set(key, s);
+      }
+    }
+    const visibleSessionIds = new Set(Array.from(dedupedVisits.values()).map((s) => s.id));
+    const visits = Array.from(dedupedVisits.values());
     const events = allEvents.filter(
-      (e) => !EXCLUDED_SESSION_IDS.has(e.session_id) && matchesDayFilter(e.created_at),
+      (e) => visibleSessionIds.has(e.session_id) && matchesDayFilter(e.created_at),
     );
 
     const pageLoads = events.filter((e) => e.event_type === "page_load");
@@ -234,11 +251,9 @@ function AdminPage() {
     }
 
     // Effective duration per session (sec). Prefers time_on_page (active
-    // engagement only). Falls back to last_event_at − started_at when no
-    // time event was recorded, but capped at MAX_FALLBACK_SEC because kiosk
-    // tablets keep sessions alive via heartbeats for hours without any real
-    // user engagement, which inflates the metric.
-    const MAX_FALLBACK_SEC = 30 * 60; // 30 minutes
+    // engagement only). Without active-time data, only show a tiny capped
+    // fallback so background kiosk heartbeats do not look like long visits.
+    const MAX_FALLBACK_SEC = 60;
     const sessionDuration: Record<string, number> = {};
     for (const s of visits) {
       const fromTime = timePerSession[s.id];
@@ -280,13 +295,9 @@ function AdminPage() {
 
     // Per-bucket helper.
     const buildBucket = (loads: number, sessList: Session[], bouncedCount: number) => {
-      const durs = sessList
-        .map((s) => timePerSession[s.id])
-        .filter((v): v is number => v != null);
+      const durs = sessList.map((s) => timePerSession[s.id]).filter((v): v is number => v != null);
       const avg =
-        durs.length > 0
-          ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length / 1000)
-          : null;
+        durs.length > 0 ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length / 1000) : null;
       const totalSess = sessList.length + bouncedCount;
       const br = totalSess > 0 ? Math.round((bouncedCount / totalSess) * 1000) / 10 : null;
       return { loads, sessions: sessList.length, avgTime: avg, bounceRate: br };
@@ -466,10 +477,10 @@ function AdminPage() {
     dayFilter === "all"
       ? ""
       : dayFilter === "weekdays"
-      ? " · weekdays only"
-      : dayFilter === "weekends"
-      ? " · weekends only"
-      : ` · ${WEEKDAY_LABEL[dayFilter]}s only`;
+        ? " · weekdays only"
+        : dayFilter === "weekends"
+          ? " · weekends only"
+          : ` · ${WEEKDAY_LABEL[dayFilter]}s only`;
 
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
@@ -478,7 +489,8 @@ function AdminPage() {
           <div>
             <h1 className="text-2xl font-semibold">Menu Analytics</h1>
             <p className="text-sm text-muted-foreground">
-              {presetLabel[preset]}{dayFilterLabel} · bounce = session shorter than {BOUNCE_SECONDS}s
+              {presetLabel[preset]}
+              {dayFilterLabel} · bounce = session shorter than {BOUNCE_SECONDS}s
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -812,7 +824,13 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-function DevicesCard({ devices: allDevices, onRefresh }: { devices: Device[]; onRefresh: () => void }) {
+function DevicesCard({
+  devices: allDevices,
+  onRefresh,
+}: {
+  devices: Device[];
+  onRefresh: () => void;
+}) {
   const [edits, setEdits] = useState<Record<string, { label: string; location: string }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   // Only show devices that haven't been configured yet (no label saved)
@@ -825,7 +843,21 @@ function DevicesCard({ devices: allDevices, onRefresh }: { devices: Device[]; on
     };
 
   const setField = (id: string, field: "label" | "location", value: string) => {
-    setEdits((prev) => ({ ...prev, [id]: { ...getRow({ device_id: id, label: null, serial: null, location: null, first_seen_at: "", last_seen_at: "" }), ...prev[id], [field]: value } }));
+    setEdits((prev) => ({
+      ...prev,
+      [id]: {
+        ...getRow({
+          device_id: id,
+          label: null,
+          serial: null,
+          location: null,
+          first_seen_at: "",
+          last_seen_at: "",
+        }),
+        ...prev[id],
+        [field]: value,
+      },
+    }));
   };
 
   const save = async (d: Device) => {
@@ -854,8 +886,8 @@ function DevicesCard({ devices: allDevices, onRefresh }: { devices: Device[]; on
   return (
     <Card title={`Devices (${devices.length})`}>
       <p className="mb-3 text-xs text-muted-foreground">
-        Each tablet generates a persistent device ID on first visit. Label them once (e.g. "Store 1 — Counter")
-        and add a location. Sessions will then show the friendly name.
+        Each tablet generates a persistent device ID on first visit. Label them once (e.g. "Store 1
+        — Counter") and add a location. Sessions will then show the friendly name.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -921,4 +953,3 @@ function DevicesCard({ devices: allDevices, onRefresh }: { devices: Device[]; on
     </Card>
   );
 }
-
