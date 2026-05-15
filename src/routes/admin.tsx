@@ -109,16 +109,6 @@ const fmtMSS = (sec: number) => {
   return `${m}:${s.toString().padStart(2, "0")}`;
 };
 
-const sessionFingerprint = (s: Pick<Session, "user_agent" | "screen">) => {
-  const ua = (s.user_agent || "")
-    .toLowerCase()
-    .replace(/(chrome|version|safari|applewebkit)\/[\d.]+/g, "$1")
-    .replace(/build\/[\w.]+/g, "build")
-    .replace(/\s+/g, " ")
-    .trim();
-  return `${s.screen || ""}|${ua}`;
-};
-
 type Band = { label: string; test: (min: number) => boolean };
 
 const TIME_BANDS: Band[] = [
@@ -218,20 +208,10 @@ function AdminPage() {
       }
       return dowFmt.format(new Date(iso)) === dayFilter;
     };
-    const rawVisits = allSessions.filter(
+    const visits = allSessions.filter(
       (s) => !EXCLUDED_SESSION_IDS.has(s.id) && matchesDayFilter(s.started_at),
     );
-    const dedupedVisits = new Map<string, Session>();
-    for (const s of rawVisits) {
-      const minuteBucket = Math.floor(new Date(s.started_at).getTime() / 60_000);
-      const key = `${minuteBucket}|${sessionFingerprint(s)}`;
-      const existing = dedupedVisits.get(key);
-      if (!existing || new Date(s.started_at).getTime() < new Date(existing.started_at).getTime()) {
-        dedupedVisits.set(key, s);
-      }
-    }
-    const visibleSessionIds = new Set(Array.from(dedupedVisits.values()).map((s) => s.id));
-    const visits = Array.from(dedupedVisits.values());
+    const visibleSessionIds = new Set(visits.map((s) => s.id));
     const events = allEvents.filter(
       (e) => visibleSessionIds.has(e.session_id) && matchesDayFilter(e.created_at),
     );
