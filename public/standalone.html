@@ -813,13 +813,13 @@ document.addEventListener('visibilitychange', function() {
   var IDLE_MS = 30000;          // pause after 30s of no interaction
   var TICK_MS = 1000;
   var totalActiveMs = 0;
-  var lastActivity = Date.now();
+  var lastActivity = 0;
   var timeReported = false;
   ['mousemove','mousedown','keydown','scroll','touchstart','click','wheel'].forEach(function(ev){
     window.addEventListener(ev, function(){ lastActivity = Date.now(); }, {passive:true, capture:true});
   });
   setInterval(function(){
-    if (document.hidden) return;
+    if (document.hidden || !lastActivity) return;
     if (Date.now() - lastActivity > IDLE_MS) return;
     totalActiveMs += TICK_MS;
   }, TICK_MS);
@@ -829,9 +829,12 @@ document.addEventListener('visibilitychange', function() {
     track({ event_type:'time_on_page', data: { ms: Math.round(totalActiveMs) } });
   }
 
-  // Heartbeat to keep last_event_at fresh while the user is on the page
+  // Heartbeat only while recently active. Idle kiosk tablets should not turn
+  // an unattended open page into a long session.
   setInterval(function(){
-    if (sessionId && !document.hidden) { send({action:'heartbeat', session_id: sessionId}); }
+    if (sessionId && !document.hidden && lastActivity && Date.now() - lastActivity <= IDLE_MS) {
+      send({action:'heartbeat', session_id: sessionId});
+    }
   }, 15000);
 
   window.addEventListener('pagehide', function(){
@@ -844,7 +847,6 @@ document.addEventListener('visibilitychange', function() {
       flushTime();
       if (sessionId) { send({action:'heartbeat', session_id: sessionId}); }
     } else {
-      lastActivity = Date.now();
       timeReported = false; // allow another flush if they leave again
     }
   });
