@@ -75,51 +75,14 @@ export const Route = createFileRoute("/api/public/track")({
                 );
             }
 
-            // Dedupe: only collapse sessions when they come from the SAME
-            // device. Different physical kiosks frequently share UA + screen
-            // (same Android model, same resolution), so a UA-based fingerprint
-            // wrongly merges them. Only fall back to the fingerprint when no
-            // device_id is provided at all.
-            const sixtySecondsAgo = new Date(Date.now() - 60_000).toISOString();
-            const requestFingerprint = trackingFingerprint(user_agent, screen);
-            const { data: recentSessions } = await sb
-              .from("analytics_sessions")
-              .select("id, device_id, user_agent, screen, started_at")
-              .gte("started_at", sixtySecondsAgo)
-              .order("started_at", { ascending: false })
-              .limit(25);
-            const existing = (recentSessions ?? []).find((s) => {
-              if (device_id) return s.device_id === device_id;
-              if (s.device_id) return false;
-              return trackingFingerprint(s.user_agent, s.screen) === requestFingerprint;
-            });
-            if (existing?.id) return json({ session_id: existing.id });
-
+            // No dedup: every `start` request creates a new session. Kiosk
+            // re-inits within the same visit will produce separate sessions.
             const { data, error } = await sb
               .from("analytics_sessions")
               .insert({ user_agent, referrer, screen, language, device_id })
               .select("id")
               .single();
             if (error) return json({ error: error.message }, 500);
-
-            // Race cleanup: if two start requests inserted at nearly the same
-            // time, keep the earliest matching fingerprint and remove this new
-            // duplicate before any page_load event is attached to it.
-            const { data: competingSessions } = await sb
-              .from("analytics_sessions")
-              .select("id, device_id, user_agent, screen, started_at")
-              .gte("started_at", sixtySecondsAgo)
-              .order("started_at", { ascending: true })
-              .limit(50);
-            const canonical = (competingSessions ?? []).find((s) => {
-              if (device_id) return s.device_id === device_id;
-              if (s.device_id) return false;
-              return trackingFingerprint(s.user_agent, s.screen) === requestFingerprint;
-            });
-            if (canonical?.id && canonical.id !== data.id) {
-              await sb.from("analytics_sessions").delete().eq("id", data.id);
-              return json({ session_id: canonical.id });
-            }
 
             // Also log a page_load event, once for this created session.
             await sb.from("analytics_events").insert({
