@@ -219,6 +219,7 @@ function AdminPage() {
     const pageLoads = events.filter((e) => e.event_type === "page_load");
     const clicks = events.filter((e) => e.event_type === "lightbox_open"); // "click" = lightbox open
     const timeEvents = events.filter((e) => e.event_type === "time_on_page");
+    const sessionEndEvents = events.filter((e) => e.event_type === "session_end");
 
     // Best recorded visible-time per session (ms). Sessions without a
     // time_on_page event have no entry here.
@@ -233,14 +234,25 @@ function AdminPage() {
       }
     }
 
-    // Effective duration per session (sec). Prefers time_on_page (active
-    // engagement only). Without active-time data, only show a tiny capped
-    // fallback so background kiosk heartbeats do not look like long visits.
+    const endedMsPerSession: Record<string, number> = {};
+    for (const e of sessionEndEvents) {
+      const ms = (e.data as { ms?: number } | null)?.ms ?? 0;
+      if (ms <= 0) continue;
+      if (!endedMsPerSession[e.session_id] || ms > endedMsPerSession[e.session_id]) {
+        endedMsPerSession[e.session_id] = ms;
+      }
+    }
+
+    // Effective duration per session (sec). Prefer explicit session_end wall
+    // time, then active time, then the stored server-side fallback.
     const MAX_FALLBACK_SEC = 60;
     const sessionDuration: Record<string, number> = {};
     for (const s of visits) {
+      const fromEnd = endedMsPerSession[s.id];
       const fromTime = timePerSession[s.id];
-      if (fromTime != null) {
+      if (fromEnd != null) {
+        sessionDuration[s.id] = Math.max(0, Math.round(fromEnd / 1000));
+      } else if (fromTime != null) {
         sessionDuration[s.id] = Math.max(0, Math.round(fromTime / 1000));
       } else {
         const raw = Math.round(
