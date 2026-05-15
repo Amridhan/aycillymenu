@@ -21,6 +21,16 @@ function admin() {
   });
 }
 
+function trackingFingerprint(userAgent: string | null, screen: string | null) {
+  const normalizedUa = (userAgent || "")
+    .toLowerCase()
+    .replace(/(chrome|version|safari|applewebkit)\/[\d.]+/g, "$1")
+    .replace(/build\/[\w.]+/g, "build")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${screen || ""}|${normalizedUa}`;
+}
+
 export const Route = createFileRoute("/api/public/track")({
   server: {
     handlers: {
@@ -63,30 +73,24 @@ export const Route = createFileRoute("/api/public/track")({
               );
             }
 
-            // Dedupe: kiosk WebViews can load /standalone.html in two browsing
-            // contexts at once (top-level + the iframe inside /). On a fresh
-            // localStorage both contexts race, mint different device_ids, and
-            // POST `start` in parallel — producing a duplicate session every
-            // visit. If this device already has a session in the last 60s,
-            // reuse it instead of inserting a new row.
-            if (device_id) {
-              const sixtySecondsAgo = new Date(Date.now() - 60_000).toISOString();
-              const { data: existing } = await sb
-                .from("analytics_sessions")
-                .select("id")
-                .eq("device_id", device_id)
-                .gte("started_at", sixtySecondsAgo)
-                .order("started_at", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-              if (existing?.id) {
-                await sb
-                  .from("analytics_sessions")
-                  .update({ last_event_at: new Date().toISOString() })
-                  .eq("id", existing.id);
-                return json({ session_id: existing.id });
-              }
-            }
+            // Dedupe: kiosk WebViews can open the same menu through two
+            // contexts/hosts at once. That can mint different device IDs, so
+            // dedupe by same-device OR same screen + normalized browser/model
+            // fingerprint within the last minute.
+            const sixtySecondsAgo = new Date(Date.now() - 60_000).toISOString();
+            const requestFingerprint = trackingFingerprint(user_agent, screen);
+            const { data: recentSessions } = await sb
+              .from("analytics_sessions")
+              .select("id, device_id, user_agent, screen, started_at")
+              .gte("started_at", sixtySecondsAgo)
+              .order("started_at", { ascending: false })
+              .limit(25);
+            const existing = (recentSessions ?? []).find(
+              (s) =>
+                (device_id && s.device_id === device_id) ||
+                trackingFingerprint(s.user_agent, s.screen) === requestFingerprint,
+            );
+            if (existing?.id) return json({ session_id: existing.id });
 
             const { data, error } = await sb
               .from("analytics_sessions")
