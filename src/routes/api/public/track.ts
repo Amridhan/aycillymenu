@@ -98,6 +98,26 @@ export const Route = createFileRoute("/api/public/track")({
               .select("id")
               .single();
             if (error) return json({ error: error.message }, 500);
+
+            // Race cleanup: if two start requests inserted at nearly the same
+            // time, keep the earliest matching fingerprint and remove this new
+            // duplicate before any page_load event is attached to it.
+            const { data: competingSessions } = await sb
+              .from("analytics_sessions")
+              .select("id, device_id, user_agent, screen, started_at")
+              .gte("started_at", sixtySecondsAgo)
+              .order("started_at", { ascending: true })
+              .limit(50);
+            const canonical = (competingSessions ?? []).find(
+              (s) =>
+                (device_id && s.device_id === device_id) ||
+                trackingFingerprint(s.user_agent, s.screen) === requestFingerprint,
+            );
+            if (canonical?.id && canonical.id !== data.id) {
+              await sb.from("analytics_sessions").delete().eq("id", data.id);
+              return json({ session_id: canonical.id });
+            }
+
             // Also log a page_load event, once for this created session.
             await sb.from("analytics_events").insert({
               session_id: data.id,
