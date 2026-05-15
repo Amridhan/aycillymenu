@@ -10111,7 +10111,9 @@
         // mark the session as active. Only direct user input counts.
         function noteRealActivity() {
           if (!realActivitySeen) {
+            closeCurrentSession();
             realActivitySeen = true;
+            start();
           }
           lastActivity = Date.now();
         }
@@ -10170,15 +10172,18 @@
         window.addEventListener("pagehide", function () {
           flushTime();
           reportSessionEnd();
+          closeCurrentSession();
         });
         window.addEventListener("beforeunload", function () {
           flushTime();
           reportSessionEnd();
+          closeCurrentSession();
         });
         window.addEventListener("visibilitychange", function () {
           if (document.hidden) {
             flushTime();
             reportSessionEnd();
+            closeCurrentSession();
           } else {
             timeReported = false; // allow another flush if they leave again
             sessionEndReported = false;
