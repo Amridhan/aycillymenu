@@ -10113,6 +10113,15 @@
           track({ event_type: "time_on_page", data: { ms: Math.round(totalActiveMs) } });
         }
 
+        function reportSessionEnd() {
+          if (!sessionId || sessionEndReported || !lastActivity || !sessionStartedAt) return;
+          sessionEndReported = true;
+          track({
+            event_type: "session_end",
+            data: { ms: Math.max(0, Date.now() - sessionStartedAt) },
+          });
+        }
+
         // Heartbeat only while recently active. Idle kiosk tablets should not turn
         // an unattended open page into a long session.
         setInterval(function () {
@@ -10131,19 +10140,20 @@
         // emit a final heartbeat and look like a real visit.
         window.addEventListener("pagehide", function () {
           flushTime();
-          if (sessionId && lastActivity) {
-            send({ action: "heartbeat", session_id: sessionId });
-          }
+          reportSessionEnd();
         });
-        window.addEventListener("beforeunload", flushTime);
+        window.addEventListener("beforeunload", function () {
+          flushTime();
+          reportSessionEnd();
+        });
         window.addEventListener("visibilitychange", function () {
           if (document.hidden) {
             flushTime();
-            if (sessionId && lastActivity) {
-              send({ action: "heartbeat", session_id: sessionId });
-            }
+            reportSessionEnd();
           } else {
             timeReported = false; // allow another flush if they leave again
+            sessionEndReported = false;
+            start();
           }
         });
 
