@@ -296,7 +296,6 @@ function AdminPage() {
     }
 
     // Sessions that contain explicit engagement/end timing — never bounces.
-    const sessionsWithLightbox = new Set(clicks.map((e) => e.session_id));
     const engagedSessionIds = new Set(events.filter((e) => REAL_ENGAGEMENT_EVENTS.has(e.event_type)).map((e) => e.session_id));
 
     // Bounce: shorter than threshold AND no real engagement recorded.
