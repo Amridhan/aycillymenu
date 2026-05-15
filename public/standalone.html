@@ -9921,7 +9921,11 @@
               return r.json();
             })
             .then(function (j) {
-              if (seq !== sessionSeq) return;
+              if (seq !== sessionSeq || document.hidden) {
+                startRequested = false;
+                sessionStartedAt = 0;
+                return;
+              }
               sessionId = j.session_id;
               flushQueue();
             })
