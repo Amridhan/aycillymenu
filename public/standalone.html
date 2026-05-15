@@ -10091,6 +10091,9 @@
         }, TICK_MS);
         function flushTime() {
           if (timeReported) return;
+          // Don't emit ms:0 — let the admin fall back to wall-clock so a real
+          // visit isn't permanently locked at 0s by an early empty flush.
+          if (totalActiveMs <= 0) return;
           timeReported = true;
           track({ event_type: "time_on_page", data: { ms: Math.round(totalActiveMs) } });
         }
