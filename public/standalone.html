@@ -9824,6 +9824,9 @@
         var sessionId = null;
         var deviceId = null;
         var queue = [];
+        var startRequested = false;
+        var sessionStartedAt = 0;
+        var sessionEndReported = false;
 
         // Persistent per-tablet ID. Stored in localStorage so it survives reloads,
         // session timeouts, and kiosk auto-restarts. Only cleared by a full
@@ -9894,6 +9897,9 @@
         }
 
         function start() {
+          if (sessionId || startRequested || document.hidden) return;
+          startRequested = true;
+          sessionStartedAt = Date.now();
           fetch(ENDPOINT, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -9914,7 +9920,10 @@
               sessionId = j.session_id;
               flushQueue();
             })
-            .catch(function () {});
+            .catch(function () {
+              startRequested = false;
+              sessionStartedAt = 0;
+            });
         }
 
         // Generic event sender — queues until session is ready.
@@ -9928,11 +9937,13 @@
           if (
             payload.event_type &&
             payload.event_type !== "time_on_page" &&
-            payload.event_type !== "section_view"
+            payload.event_type !== "section_view" &&
+            payload.event_type !== "session_end"
           ) {
             try { window.__markActive && window.__markActive(); } catch (_) {}
           }
           if (!sessionId) {
+            if (payload.event_type === "section_view") return;
             queue.push(payload);
             return;
           }
