@@ -173,11 +173,7 @@ function AdminPage() {
     "365d": 365,
   };
 
-  async function load(opts?: {
-    preset?: RangePreset;
-    from?: string;
-    to?: string;
-  }) {
+  async function load(opts?: { preset?: RangePreset; from?: string; to?: string }) {
     const p = opts?.preset ?? preset;
     setLoading(true);
     setError(null);
@@ -299,13 +295,9 @@ function AdminPage() {
 
     // Per-bucket helper.
     const buildBucket = (loads: number, sessList: Session[], bouncedCount: number) => {
-      const durs = sessList
-        .map((s) => timePerSession[s.id])
-        .filter((v): v is number => v != null);
+      const durs = sessList.map((s) => timePerSession[s.id]).filter((v): v is number => v != null);
       const avg =
-        durs.length > 0
-          ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length / 1000)
-          : null;
+        durs.length > 0 ? Math.round(durs.reduce((a, b) => a + b, 0) / durs.length / 1000) : null;
       const totalSess = sessList.length + bouncedCount;
       const br = totalSess > 0 ? Math.round((bouncedCount / totalSess) * 1000) / 10 : null;
       return { loads, sessions: sessList.length, avgTime: avg, bounceRate: br };
@@ -485,10 +477,10 @@ function AdminPage() {
     dayFilter === "all"
       ? ""
       : dayFilter === "weekdays"
-      ? " · weekdays only"
-      : dayFilter === "weekends"
-      ? " · weekends only"
-      : ` · ${WEEKDAY_LABEL[dayFilter]}s only`;
+        ? " · weekdays only"
+        : dayFilter === "weekends"
+          ? " · weekends only"
+          : ` · ${WEEKDAY_LABEL[dayFilter]}s only`;
 
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
@@ -497,7 +489,8 @@ function AdminPage() {
           <div>
             <h1 className="text-2xl font-semibold">Menu Analytics</h1>
             <p className="text-sm text-muted-foreground">
-              {presetLabel[preset]}{dayFilterLabel} · bounce = session shorter than {BOUNCE_SECONDS}s
+              {presetLabel[preset]}
+              {dayFilterLabel} · bounce = session shorter than {BOUNCE_SECONDS}s
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -831,7 +824,13 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-function DevicesCard({ devices: allDevices, onRefresh }: { devices: Device[]; onRefresh: () => void }) {
+function DevicesCard({
+  devices: allDevices,
+  onRefresh,
+}: {
+  devices: Device[];
+  onRefresh: () => void;
+}) {
   const [edits, setEdits] = useState<Record<string, { label: string; location: string }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   // Only show devices that haven't been configured yet (no label saved)
@@ -844,7 +843,21 @@ function DevicesCard({ devices: allDevices, onRefresh }: { devices: Device[]; on
     };
 
   const setField = (id: string, field: "label" | "location", value: string) => {
-    setEdits((prev) => ({ ...prev, [id]: { ...getRow({ device_id: id, label: null, serial: null, location: null, first_seen_at: "", last_seen_at: "" }), ...prev[id], [field]: value } }));
+    setEdits((prev) => ({
+      ...prev,
+      [id]: {
+        ...getRow({
+          device_id: id,
+          label: null,
+          serial: null,
+          location: null,
+          first_seen_at: "",
+          last_seen_at: "",
+        }),
+        ...prev[id],
+        [field]: value,
+      },
+    }));
   };
 
   const save = async (d: Device) => {
@@ -873,8 +886,8 @@ function DevicesCard({ devices: allDevices, onRefresh }: { devices: Device[]; on
   return (
     <Card title={`Devices (${devices.length})`}>
       <p className="mb-3 text-xs text-muted-foreground">
-        Each tablet generates a persistent device ID on first visit. Label them once (e.g. "Store 1 — Counter")
-        and add a location. Sessions will then show the friendly name.
+        Each tablet generates a persistent device ID on first visit. Label them once (e.g. "Store 1
+        — Counter") and add a location. Sessions will then show the friendly name.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -940,4 +953,3 @@ function DevicesCard({ devices: allDevices, onRefresh }: { devices: Device[]; on
     </Card>
   );
 }
-

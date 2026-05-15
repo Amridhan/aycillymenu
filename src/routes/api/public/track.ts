@@ -67,10 +67,12 @@ export const Route = createFileRoute("/api/public/track")({
 
             // Upsert device row (track first/last seen).
             if (device_id) {
-              await sb.from("devices").upsert(
-                { device_id, last_seen_at: new Date().toISOString() },
-                { onConflict: "device_id" },
-              );
+              await sb
+                .from("devices")
+                .upsert(
+                  { device_id, last_seen_at: new Date().toISOString() },
+                  { onConflict: "device_id" },
+                );
             }
 
             // Dedupe: kiosk WebViews can open the same menu through two
