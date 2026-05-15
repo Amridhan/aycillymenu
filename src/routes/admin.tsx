@@ -38,6 +38,7 @@ export const Route = createFileRoute("/admin")({
 });
 
 const BOUNCE_SECONDS = 10;
+const REAL_ENGAGEMENT_EVENTS = new Set(["lightbox_open", "lightbox_close", "hover"]);
 
 const TZ = "Asia/Dubai"; // Gulf Standard Time (UTC+4)
 const EXCLUDED_SESSION_IDS = new Set<string>([
@@ -221,6 +222,15 @@ function AdminPage() {
     const timeEvents = events.filter((e) => e.event_type === "time_on_page");
     const sessionEndEvents = events.filter((e) => e.event_type === "session_end");
 
+    const firstEngagementAt: Record<string, number> = {};
+    for (const e of events) {
+      if (!REAL_ENGAGEMENT_EVENTS.has(e.event_type)) continue;
+      const t = new Date(e.created_at).getTime();
+      if (!firstEngagementAt[e.session_id] || t < firstEngagementAt[e.session_id]) {
+        firstEngagementAt[e.session_id] = t;
+      }
+    }
+
     // Best recorded visible-time per session (ms). Sessions without a
     // time_on_page event have no entry here.
     const timePerSession: Record<string, number> = {};
@@ -235,8 +245,13 @@ function AdminPage() {
     }
 
     const endedMsPerSession: Record<string, number> = {};
+    const endedAtPerSession: Record<string, number> = {};
     for (const e of sessionEndEvents) {
       const ms = (e.data as { ms?: number } | null)?.ms ?? 0;
+      endedAtPerSession[e.session_id] = Math.max(
+        endedAtPerSession[e.session_id] || 0,
+        new Date(e.created_at).getTime(),
+      );
       if (ms <= 0) continue;
       if (!endedMsPerSession[e.session_id] || ms > endedMsPerSession[e.session_id]) {
         endedMsPerSession[e.session_id] = ms;
@@ -247,11 +262,23 @@ function AdminPage() {
     // time, then active time, then the stored server-side fallback.
     const MAX_FALLBACK_SEC = 60;
     const sessionDuration: Record<string, number> = {};
+    const sessionDisplayStartedAt: Record<string, string> = {};
     for (const s of visits) {
       const fromEnd = endedMsPerSession[s.id];
       const fromTime = timePerSession[s.id];
+      const startedAt = new Date(s.started_at).getTime();
+      const engagedAt = firstEngagementAt[s.id];
+      const idleBeforeEngagement = engagedAt ? engagedAt - startedAt : 0;
+      if (engagedAt && idleBeforeEngagement > BOUNCE_SECONDS * 1000) {
+        sessionDisplayStartedAt[s.id] = new Date(engagedAt).toISOString();
+      }
       if (fromEnd != null) {
-        sessionDuration[s.id] = Math.max(0, Math.round(fromEnd / 1000));
+        const endAt = endedAtPerSession[s.id];
+        const adjustedMs =
+          engagedAt && endAt && idleBeforeEngagement > BOUNCE_SECONDS * 1000
+            ? Math.max(0, endAt - engagedAt)
+            : fromEnd;
+        sessionDuration[s.id] = Math.max(0, Math.round(adjustedMs / 1000));
       } else if (fromTime != null) {
         sessionDuration[s.id] = Math.max(0, Math.round(fromTime / 1000));
       } else {
@@ -457,6 +484,7 @@ function AdminPage() {
       sessions,
       recentSessions: visits,
       sessionDuration,
+      sessionDisplayStartedAt,
     };
   }, [allSessions, allEvents, dayFilter]);
 
