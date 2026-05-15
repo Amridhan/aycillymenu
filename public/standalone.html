@@ -10098,15 +10098,21 @@
         // The kiosk fires programmatic window.scrollTo() (idle reset, section
         // snap), which dispatches a synthetic "scroll" event and would falsely
         // mark the session as active. Only direct user input counts.
-        function markActive() { lastActivity = Date.now(); }
-        window.__markActive = markActive;
+        function noteRealActivity() {
+          if (!realActivitySeen) {
+            realActivitySeen = true;
+            restartSessionForInteraction();
+          }
+          lastActivity = Date.now();
+        }
+        window.__noteRealActivity = noteRealActivity;
         ["pointerdown", "mousedown", "keydown", "touchstart", "touchend", "touchmove", "click"].forEach(function (ev) {
           window.addEventListener(
             ev,
             function (e) {
               // Ignore synthetic events (e.g. programmatic .click() or scroll).
               if (e && e.isTrusted === false) return;
-              markActive();
+              noteRealActivity();
             },
             { passive: true, capture: true },
           );
@@ -10118,6 +10124,7 @@
         }, TICK_MS);
         function flushTime() {
           if (timeReported) return;
+          if (!realActivitySeen) return;
           // Don't emit ms:0 — let the admin fall back to wall-clock so a real
           // visit isn't permanently locked at 0s by an early empty flush.
           if (totalActiveMs <= 0) return;
@@ -10127,6 +10134,7 @@
 
         function reportSessionEnd() {
           if (!sessionId || sessionEndReported || !sessionStartedAt) return;
+          if (!realActivitySeen) return;
           sessionEndReported = true;
           track({
             event_type: "session_end",
