@@ -280,11 +280,14 @@ function AdminPage() {
       }
       if (fromEnd != null) {
         const endAt = endedAtPerSession[s.id];
+        const serverWallMs = endAt ? Math.max(0, endAt - startedAt) : null;
         const adjustedMs =
           engagedAt && endAt && idleBeforeEngagement > BOUNCE_SECONDS * 1000
             ? Math.max(0, endAt - engagedAt)
             : fromEnd;
-        sessionDuration[s.id] = Math.max(0, Math.round(adjustedMs / 1000));
+        const trustedMs =
+          serverWallMs != null && adjustedMs - serverWallMs > 3000 ? serverWallMs : adjustedMs;
+        sessionDuration[s.id] = Math.max(0, Math.round(trustedMs / 1000));
       } else if (fromTime != null) {
         sessionDuration[s.id] = Math.max(0, Math.round(fromTime / 1000));
       } else {
