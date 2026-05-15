@@ -9955,6 +9955,7 @@
             queue.push(payload);
             return;
           }
+          if (payload.event_type === "section_view" && !realActivitySeen) return;
           payload.session_id = sessionId;
           send(payload);
         }
