@@ -800,11 +800,12 @@ function AdminPage() {
               <tbody>
                 {recentSessions.slice(0, 100).map((s) => {
                   const sec = sessionDuration[s.id] ?? 0;
+                  const displayStartedAt = sessionDisplayStartedAt[s.id] ?? s.started_at;
                   const dev = s.device_id ? devices.find((d) => d.device_id === s.device_id) : null;
                   const devLabel = dev?.label || (s.device_id ? s.device_id.slice(0, 8) : "—");
                   return (
                     <tr key={s.id} className="border-t border-border">
-                      <td className="py-2 whitespace-nowrap">{fmtDateTime(s.started_at)}</td>
+                      <td className="py-2 whitespace-nowrap">{fmtDateTime(displayStartedAt)}</td>
                       <td className="py-2 tabular-nums">{sec}s</td>
                       <td className="py-2 truncate max-w-[160px]" title={s.device_id || ""}>
                         {devLabel}
