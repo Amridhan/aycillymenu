@@ -245,6 +245,9 @@ function AdminPage() {
     const timePerSession: Record<string, number> = {};
     for (const e of timeEvents) {
       const ms = (e.data as { ms?: number } | null)?.ms ?? 0;
+      // Ignore zero-ms flushes (early/empty kiosk flushes) so the wall-clock
+      // fallback below can produce a sensible duration instead of locking at 0s.
+      if (ms <= 0) continue;
       if (!timePerSession[e.session_id] || ms > timePerSession[e.session_id]) {
         timePerSession[e.session_id] = ms;
       }
